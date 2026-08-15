@@ -1,0 +1,29 @@
+{
+  "name": "omniscient",
+  "version": "0.1.0",
+  "description": "Quiz-and-recall study sessions from mega problem sets, inspired by How to Be a Straight-A Student.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint .",
+    "test": "node esbuild.config.mjs test && node .test-build/parser.test.cjs",
+    "check": "npm run build && npm run lint && npm run test"
+  },
+  "keywords": [
+    "obsidian",
+    "study",
+    "quiz",
+    "recall",
+    "flashcards"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "eslint": "^9.19.0",
+    "eslint-plugin-obsidianmd": "^0.4.1",
+    "obsidian": "latest",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

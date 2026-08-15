@@ -1,0 +1,11 @@
+{
+  "id": "omniscient",
+  "name": "Omniscient",
+  "version": "0.1.0",
+  "minAppVersion": "1.13.0",
+  "description": "Turn mega problem sets into quiz-and-recall study sessions.",
+  "author": "amorous shams",
+  "authorUrl": "https://github.com/amorous-shams",
+  "fundingUrl": "",
+  "isDesktopOnly": false
+}
