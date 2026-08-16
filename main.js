@@ -696,7 +696,7 @@ var QuizView = class extends import_obsidian5.ItemView {
     const actions = area.createDiv({ cls: "omniscient-actions" });
     if (!this.revealed) {
       const reveal = actions.createEl("button", {
-        cls: "mod-cta",
+        cls: "omniscient-grade-btn mod-cta",
         text: "Reveal answer",
         attr: { "aria-label": "Reveal the answer" }
       });
