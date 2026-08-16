@@ -8,16 +8,16 @@ Keep all of your practice questions for a subject in one markdown file (or a fol
 
 - Obsidian **1.13.0 or later** (uses the declarative settings API)
 
-See [CHANGELOG.md](CHANGELOG.md) for release history and [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidelines.
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## How it works
 
 The quiz-and-recall method works like this: answer from memory (never passively re-read), mark what you missed, review only those, and repeat until you complete a pass with no mistakes. Omniscient encodes exactly that loop:
 
 1. **Run a session** on any file with `> [!Question]` callout blocks.
-2. **Answer from memory** — the answer is hidden until you ask for it.
+2. **Answer from memory**: the answer is hidden until you ask for it.
 3. **Reveal the answer**, then self-grade: `Struggling`, `Almost`, or `Mastered`.
-4. **Repeat with only the gaps** — the "Not mastered yet" filter gives you the next pass; keep going until you finish a session with nothing left to review.
+4. **Repeat with only the gaps**: the "Not mastered yet" filter gives you the next pass; keep going until you finish a session with nothing left to review.
 
 ## Question format
 
@@ -51,9 +51,10 @@ The derivative describes the rate of change...
 
 - A question starts at `> [!Question]` (the title word and metadata are optional: `> [!Question]` alone works, and plain `> Question` is also recognized); everything until the next answer block is the question, everything after is the answer. Answer blocks use `> [!Success]` (renders as Obsidian's green callout; `[!answer]` is accepted as an alias).
 - LaTeX (`$$...$$`), code blocks, and nested callouts inside questions and answers are rendered normally.
-- Questions without an answer are fine — the reveal will say so.
+- Questions without an answer are fine. The reveal will say so.
 - One file can hold any number of questions; use headings to organize by topic.
 - For multi-file subjects, a folder of question files is treated as one big mega-problem set (see "Start quiz from folder").
+- A complete example quiz lives in `examples/calculus-quiz.md`.
 
 ### Status metadata
 
@@ -61,10 +62,10 @@ Status is stored **on the question line**, so progress is visible in the file it
 
 | Token | Meaning |
 | --- | --- |
-| *(none)* | New — never graded |
+| *(none)* | New, never graded |
 | `Struggling` | Missed it last pass |
 | `Almost` | Got it, but shaky |
-| `Mastered(2)` | Answered correctly — the number is **consecutive** mastered passes |
+| `Mastered(2)` | Answered correctly; the number is **consecutive** mastered passes |
 
 Grading rules:
 
@@ -93,7 +94,7 @@ Commands (assign hotkeys in Settings → Hotkeys if you want them):
 | --- | --- |
 | **Start quiz** | Runs a session on the active file |
 | **Choose quiz file** | Picks any file in the vault that contains questions |
-| **Start quiz from folder** | Runs one session over every Markdown file in a folder (and its subfolders) — the mega-problem set across chapters |
+| **Start quiz from folder** | Runs one session over every Markdown file in a folder (and its subfolders), the mega-problem set across chapters |
 | **Show quiz progress** | Opens a per-file summary: exam-ready, mastered, almost, struggling, new, and counts by difficulty |
 
 There is also a **ribbon icon** (a target) in the left sidebar that starts a quiz with one click, or lets you pick a file when no file is active.
@@ -102,7 +103,7 @@ The setup dialog lets you:
 
 - Filter by status: all / new / struggling / almost there / not mastered yet / mastered
 - Filter by difficulty
-- Toggle shuffling (on by default — never memorize order, only material)
+- Toggle shuffling (on by default; never memorize order, only material)
 - See the question count, file count, and how many are exam-ready before you start
 
 ### In-session keyboard shortcuts
@@ -113,19 +114,19 @@ The setup dialog lets you:
 | `1` | Grade: struggling |
 | `2` | Grade: almost |
 | `3` | Grade: mastered |
-| `S` | Skip — requeues the question at the end, ungraded |
+| `S` | Skip; requeues the question at the end, ungraded |
 | `U` | Undo the last grade (also restores the status in the file) |
 | `Esc` | End the session |
 
-Every grade is saved to the file immediately. If you edit the file during a session, the plugin detects it and skips writing to questions that changed — nothing gets corrupted.
+Every grade is saved to the file immediately. If you edit the file during a session, the plugin detects it and skips writing to questions that changed. Nothing gets corrupted.
 
 ### Finishing early is normal
 
-Ending a session before all questions are answered is a first-class flow, not an error: hit `Esc` or the **End session** button whenever you run out of time. The summary shows how many questions remain unanswered, and those questions keep their current status — nothing is penalized. The session history counts only what you actually answered.
+Ending a session before all questions are answered is a first-class flow, not an error: hit `Esc` or the **End session** button whenever you run out of time. The summary shows how many questions remain unanswered, and those questions keep their current status. Nothing is penalized. The session history counts only what you actually answered.
 
 ### Session history
 
-Every finished session is recorded (date, file, counts), including partial ones. The settings tab shows a summary and your totals — you can watch the mastered percentage climb over time.
+Every finished session is recorded (date, file, counts), including partial ones. The settings tab shows a summary and your totals, so you can watch the mastered percentage climb over time.
 
 ## Troubleshooting
 
@@ -133,7 +134,7 @@ Every finished session is recorded (date, file, counts), including partial ones.
 
 1. Reload Obsidian (**Ctrl+R**) after installing or updating the plugin.
 2. Make sure the active file is a Markdown file with at least one `> [!Question]` block.
-3. Check the developer console (**Ctrl+Shift+I**) for a red error starting with `Omniscient:` — any failure is reported there and as a notice.
+3. Check the developer console for a red error starting with `Omniscient:`; any failure is reported there and as a notice.
 
 **A grade did not change the file.**
 
@@ -151,22 +152,10 @@ Check the status filter and difficulty filter in the setup dialog, and that the 
 | Mastered passes | `2` | Consecutive mastered answers to be exam-ready |
 | Shuffle questions | on | Randomize order at session start |
 
-## Development
-
-```bash
-npm install
-npm run dev      # watch mode build
-npm run build    # production build (main.js)
-npm test         # parser + session unit tests
-npm run lint     # eslint (obsidianmd ruleset)
-```
-
-The parser (`src/parser.ts`) and session engine (`src/session.ts`) are pure TypeScript with no Obsidian dependencies and are covered by unit tests in `tests/`. A complete example quiz lives in `examples/calculus-quiz.md`.
-
-### Releasing
-
-Push a tag matching `[0-9]+.[0-9]+.[0-9]+`; the release workflow (`.github/workflows/release.yml`) builds, lints, tests, updates `versions.json`, and creates a GitHub release with `main.js`, `manifest.json`, `styles.css`, and `versions.json` plus build provenance attestation.
-
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Licensed under the MIT license. See [LICENSE](LICENSE).
+
+## Disclaimer
+
+This plugin was built with the assistance of an AI coding agent.
