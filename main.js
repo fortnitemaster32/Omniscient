@@ -1024,6 +1024,14 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
           void this.pickQuizFile();
         }
       });
+      this.addRibbonIcon("target", "Start quiz", () => {
+        const file = this.app.workspace.getActiveFile();
+        if (file && file.extension === "md") {
+          void this.startQuizFlow(file, "practice");
+        } else {
+          void this.pickQuizFile();
+        }
+      });
     } catch (error) {
       console.error("Omniscient: failed to load", error);
       new import_obsidian6.Notice("Omniscient failed to load. See the developer console for details.");
@@ -1035,17 +1043,20 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
   // ------------------------------------------------------------------
   // Commands
   // ------------------------------------------------------------------
+  /**
+   * Always enabled so the palette never silently no-ops: if there is no
+   * active markdown file we say so explicitly.
+   */
   startQuizCommand(checking, mode) {
+    if (checking) {
+      return true;
+    }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
-      if (!checking) {
-        new import_obsidian6.Notice("Open a markdown file first, then run this command.");
-      }
-      return false;
+      new import_obsidian6.Notice("Open a markdown file first, then run this command.");
+      return true;
     }
-    if (!checking) {
-      void this.startQuizFlow(file, mode);
-    }
+    void this.startQuizFlow(file, mode);
     return true;
   }
   /**

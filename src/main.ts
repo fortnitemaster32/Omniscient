@@ -40,6 +40,15 @@ export default class OmniscientPlugin extends Plugin {
                     void this.pickQuizFile();
                 },
             });
+
+            this.addRibbonIcon('target', 'Start quiz', () => {
+                const file = this.app.workspace.getActiveFile();
+                if (file && file.extension === 'md') {
+                    void this.startQuizFlow(file, 'practice');
+                } else {
+                    void this.pickQuizFile();
+                }
+            });
         } catch (error) {
             console.error('Omniscient: failed to load', error);
             new Notice('Omniscient failed to load. See the developer console for details.');
@@ -54,17 +63,20 @@ export default class OmniscientPlugin extends Plugin {
     // Commands
     // ------------------------------------------------------------------
 
+    /**
+     * Always enabled so the palette never silently no-ops: if there is no
+     * active markdown file we say so explicitly.
+     */
     private startQuizCommand(checking: boolean, mode: SessionMode): boolean {
+        if (checking) {
+            return true;
+        }
         const file = this.app.workspace.getActiveFile();
         if (!file || file.extension !== 'md') {
-            if (!checking) {
-                new Notice('Open a markdown file first, then run this command.');
-            }
-            return false;
+            new Notice('Open a markdown file first, then run this command.');
+            return true;
         }
-        if (!checking) {
-            void this.startQuizFlow(file, mode);
-        }
+        void this.startQuizFlow(file, mode);
         return true;
     }
 
