@@ -77,6 +77,7 @@ function makeBlock(overrides: Partial<QuestionBlock>): QuestionBlock {
         headerIndex: 0,
         headerLine: '> Question',
         stem: '> Question',
+        sourcePath: '',
         questionBody: 'body',
         answerBody: 'answer',
         difficulty: undefined,
@@ -89,7 +90,7 @@ function makeBlock(overrides: Partial<QuestionBlock>): QuestionBlock {
 
 function makeConfig(overrides: Partial<QuizSessionConfig>): QuizSessionConfig {
     return {
-        filePath: 'test.md',
+        filePaths: ['test.md'],
         shuffle: false,
         statusFilter: 'all',
         difficultyFilter: 'all',
@@ -445,6 +446,75 @@ test('difficulty filter works', () => {
     const session = new QuizSession([hard, easy, none], makeConfig({ difficultyFilter: 'Hard' }));
     eq(session.total, 1);
     eq(session.current?.block.questionBody, 'h');
+});
+
+test('skip requeues the current question ungraded', () => {
+    const blocks = [makeBlock({ questionBody: 'a' }), makeBlock({ questionBody: 'b' })];
+    const session = new QuizSession(blocks, makeConfig({}));
+    eq(session.current?.block.questionBody, 'a');
+    const skipped = session.skipCurrent();
+    eq(skipped?.block.questionBody, 'a');
+    eq(session.current?.block.questionBody, 'b');
+    session.skipCurrent();
+    eq(session.current?.block.questionBody, 'a');
+    eq(session.counts.answered, 0);
+    eq(session.isComplete, false);
+});
+
+test('skip on an empty queue returns null', () => {
+    const session = new QuizSession([makeBlock({})], makeConfig({}));
+    session.gradeCurrent('Mastered');
+    eq(session.isComplete, true);
+    eq(session.skipCurrent(), null);
+});
+
+test('undo restores the previous status and requeues the question', () => {
+    const block = makeBlock({ status: 'Almost', passes: 0 });
+    const session = new QuizSession([block], makeConfig({}));
+    session.gradeCurrent('Mastered');
+    eq(block.status, 'Mastered');
+    eq(block.passes, 1);
+    eq(session.isComplete, true);
+    eq(session.hasUndo, true);
+    const undone = session.undoLast();
+    eq(undone?.block.questionBody, block.questionBody);
+    eq(block.status, 'Almost');
+    eq(block.passes, 0);
+    eq(session.isComplete, false);
+    eq(session.current?.block.questionBody, block.questionBody);
+    eq(session.counts.answered, 0);
+    eq(session.hasUndo, false);
+});
+
+test('undo across repeated grade/undo cycles rewinds correctly', () => {
+    const block = makeBlock({ status: 'Mastered', passes: 3 });
+    const session = new QuizSession([block], makeConfig({}));
+    session.gradeCurrent('Struggling');
+    eq(block.status, 'Struggling');
+    session.undoLast();
+    eq(block.status, 'Mastered');
+    eq(block.passes, 3);
+    session.gradeCurrent('Mastered');
+    eq(block.passes, 4);
+    session.undoLast();
+    eq(block.status, 'Mastered');
+    eq(block.passes, 3);
+    eq(session.undoLast(), null);
+});
+
+test('skip keeps questions in the count and finishable', () => {
+    const blocks = [makeBlock({ questionBody: 'a' }), makeBlock({ questionBody: 'b' })];
+    const session = new QuizSession(blocks, makeConfig({}));
+    session.skipCurrent();
+    session.gradeCurrent('Mastered');
+    eq(session.counts.answered, 1);
+    eq(session.isComplete, false);
+    session.skipCurrent();
+    session.gradeCurrent('Almost');
+    eq(session.isComplete, true);
+    eq(session.counts.answered, 2);
+    eq(session.counts.mastered, 1);
+    eq(session.counts.almost, 1);
 });
 
 test('shuffle keeps all questions', () => {

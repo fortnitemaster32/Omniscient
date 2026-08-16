@@ -22,8 +22,10 @@ export class SetupModal extends Modal {
     constructor(
         app: App,
         private readonly plugin: OmniscientPlugin,
-        private readonly filePath: string,
+        private readonly filePaths: string[],
         private readonly questionCount: number,
+        private readonly fileCount: number,
+        private readonly examReady: number,
         private readonly onStart: (config: QuizSessionConfig) => void,
     ) {
         super(app);
@@ -47,7 +49,11 @@ export class SetupModal extends Modal {
 
         new Setting(contentEl)
             .setName('Questions')
-            .setDesc(`${this.questionCount} questions in the file`)
+            .setDesc(
+                `${this.questionCount} questions${
+                    this.fileCount > 1 ? ` across ${this.fileCount} files` : ''
+                } · ${this.examReady} exam-ready`,
+            )
             .addDropdown((dropdown) => {
                 for (const [value, label] of Object.entries(STATUS_OPTIONS)) {
                     dropdown.addOption(value, label);
@@ -85,7 +91,7 @@ export class SetupModal extends Modal {
             button.setButtonText('Start session').setCta().onClick(() => {
                 this.close();
                 this.onStart({
-                    filePath: this.filePath,
+                    filePaths: this.filePaths,
                     shuffle: this.shuffle,
                     statusFilter: this.statusFilter,
                     difficultyFilter: this.difficultyFilter,

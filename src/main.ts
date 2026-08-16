@@ -1,8 +1,10 @@
 /** Omniscient plugin entry point. */
 
-import { Notice, Plugin, TFile } from 'obsidian';
+import { Notice, Plugin, TFolder, TFile } from 'obsidian';
 import { QuizFilePicker } from './filePickerModal';
+import { FolderPickModal } from './folderPickModal';
 import { HAS_QUESTIONS_RE, parseQuestions } from './parser';
+import { ProgressModal } from './progressModal';
 import { QUIZ_VIEW_TYPE, QuizView } from './quizView';
 import {
     DEFAULT_SETTINGS,
@@ -10,8 +12,9 @@ import {
     parseDifficultyLabels,
 } from './settings';
 import { SetupModal } from './setupModal';
+import { summarizeBlocks } from './stats';
 import type { OmniscientSettings } from './settings';
-import type { QuizSessionConfig, SessionRecord } from './types';
+import type { QuestionBlock, QuizSessionConfig, SessionRecord } from './types';
 
 export default class OmniscientPlugin extends Plugin {
     settings: OmniscientSettings = Object.assign({}, DEFAULT_SETTINGS);
@@ -40,6 +43,18 @@ export default class OmniscientPlugin extends Plugin {
                 callback: () => {
                     void this.pickQuizFile();
                 },
+            });
+            this.addCommand({
+                id: 'start-folder-quiz',
+                name: 'Start quiz from folder',
+                callback: () => {
+                    new FolderPickModal(this.app, this).open();
+                },
+            });
+            this.addCommand({
+                id: 'show-progress',
+                name: 'Show quiz progress',
+                checkCallback: (checking) => this.showProgressCommand(checking),
             });
 
             this.addRibbonIcon('target', 'Start quiz', () => {
@@ -74,7 +89,7 @@ export default class OmniscientPlugin extends Plugin {
         }
         const file = this.app.workspace.getActiveFile();
         if (!file || file.extension !== 'md') {
-            new Notice('Open a markdown file first, then run this command.');
+            new Notice('Open a Markdown file first, then run this command.');
             return true;
         }
         void this.startQuizFlow(file);
@@ -88,37 +103,86 @@ export default class OmniscientPlugin extends Plugin {
      * "review struggling") the session starts immediately using the preset
      * over the settings defaults.
      */
-    async startQuizFlow(
-        file: TFile,
-        preset?: Partial<QuizSessionConfig>,
-    ): Promise<void> {
-        let content: string;
-        try {
-            content = await this.app.vault.read(file);
-        } catch {
-            new Notice('Could not read the selected file.');
+    async startQuizFlow(file: TFile, preset?: Partial<QuizSessionConfig>): Promise<void> {
+        await this.startQuizFlowFromPaths([file.path], preset);
+    }
+
+    /** Starts a quiz over every markdown file inside a folder tree. */
+    async startFolderQuizFlow(folder: TFolder): Promise<void> {
+        const prefix = `${folder.path}/`;
+        const paths = this.app.vault
+            .getMarkdownFiles()
+            .filter((file) => file.path.startsWith(prefix))
+            .map((file) => file.path);
+        if (paths.length === 0) {
+            new Notice('No Markdown files in this folder.');
             return;
         }
-        const questions = parseQuestions(content, this.getDifficultyLabels()).questions;
-        if (questions.length === 0) {
-            new Notice(`No questions found in ${file.basename}.`);
+        await this.startQuizFlowFromPaths(paths);
+    }
+
+    /**
+     * Reads the files, validates they contain questions, and starts a
+     * session. Without a preset, shows the setup modal first. With a preset
+     * (e.g. "review struggling") the session starts immediately using the
+     * preset over the settings defaults.
+     */
+    async startQuizFlowFromPaths(
+        filePaths: string[],
+        preset?: Partial<QuizSessionConfig>,
+    ): Promise<void> {
+        const labels = this.getDifficultyLabels();
+        const blocks: QuestionBlock[] = [];
+        let foundFiles = 0;
+        for (const path of filePaths) {
+            const abstract = this.app.vault.getAbstractFileByPath(path);
+            if (!(abstract instanceof TFile)) {
+                continue;
+            }
+            try {
+                const content = await this.app.vault.read(abstract);
+                const parsed = parseQuestions(content, labels);
+                for (const question of parsed.questions) {
+                    question.sourcePath = path;
+                }
+                blocks.push(...parsed.questions);
+                foundFiles++;
+            } catch {
+                // Skip files that cannot be read.
+            }
+        }
+        if (foundFiles === 0) {
+            new Notice('Could not read the selected file(s).');
+            return;
+        }
+        if (blocks.length === 0) {
+            new Notice('No questions found in the selected file(s).');
             return;
         }
         if (preset) {
             const config: QuizSessionConfig = {
-                filePath: file.path,
+                filePaths,
                 shuffle: this.settings.shuffleByDefault,
                 statusFilter: 'all',
                 difficultyFilter: 'all',
                 masteredPasses: this.settings.masteredPasses,
                 ...preset,
             };
-            void this.openQuizView(file, config);
+            void this.openQuizView(config);
             return;
         }
-        new SetupModal(this.app, this, file.path, questions.length, (config) => {
-            void this.openQuizView(file, config);
-        }).open();
+        const summary = summarizeBlocks(blocks, this.settings.masteredPasses);
+        new SetupModal(
+            this.app,
+            this,
+            filePaths,
+            blocks.length,
+            foundFiles,
+            summary.examReady,
+            (config) => {
+                void this.openQuizView(config);
+            },
+        ).open();
     }
 
     /**
@@ -131,9 +195,9 @@ export default class OmniscientPlugin extends Plugin {
         return config;
     }
 
-    private async openQuizView(file: TFile, config: QuizSessionConfig): Promise<void> {
+    private async openQuizView(config: QuizSessionConfig): Promise<void> {
         try {
-            this.pendingQuizConfig = Object.assign({}, config, { filePath: file.path });
+            this.pendingQuizConfig = config;
             const leaf = this.app.workspace.getLeaf('tab');
             await leaf.setViewState({ type: QUIZ_VIEW_TYPE, active: true });
             void this.app.workspace.revealLeaf(leaf);
@@ -142,6 +206,36 @@ export default class OmniscientPlugin extends Plugin {
             console.error('Omniscient: failed to open quiz view', error);
             new Notice('Could not open the quiz view. See the developer console for details.');
         }
+    }
+
+    private async showProgress(file: TFile): Promise<void> {
+        let content: string;
+        try {
+            content = await this.app.vault.read(file);
+        } catch {
+            new Notice('Could not read the selected file.');
+            return;
+        }
+        const questions = parseQuestions(content, this.getDifficultyLabels()).questions;
+        if (questions.length === 0) {
+            new Notice(`No questions found in ${file.basename}.`);
+            return;
+        }
+        const summary = summarizeBlocks(questions, this.settings.masteredPasses);
+        new ProgressModal(this.app, file.basename, summary).open();
+    }
+
+    private showProgressCommand(checking: boolean): boolean {
+        if (checking) {
+            return true;
+        }
+        const file = this.app.workspace.getActiveFile();
+        if (!file || file.extension !== 'md') {
+            new Notice('Open a Markdown file first, then run this command.');
+            return true;
+        }
+        void this.showProgress(file);
+        return true;
     }
 
     private async pickQuizFile(): Promise<void> {

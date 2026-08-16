@@ -244,6 +244,7 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
                 headerIndex: i,
                 headerLine: lines[i],
                 stem: header.lineStem,
+                sourcePath: '',
                 questionBody: '',
                 answerBody: '',
                 difficulty: meta.difficulty,

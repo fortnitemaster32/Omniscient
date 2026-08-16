@@ -83,6 +83,8 @@ Metadata tokens are read from the **end of the line** and rewritten in canonical
 | --- | --- |
 | **Start quiz** | Runs a session on the active file |
 | **Choose quiz file** | Picks any file in the vault that contains questions |
+| **Start quiz from folder** | Runs one session over every Markdown file in a folder (and its subfolders) — the mega-problem set across chapters |
+| **Show quiz progress** | Opens a per-file summary: exam-ready, mastered, almost, struggling, new, and counts by difficulty |
 
 There is also a **🎯 ribbon icon** in the left sidebar that starts a quiz with one click (or lets you pick a file).
 
@@ -91,6 +93,7 @@ The setup dialog lets you:
 - Filter by status: all / new / struggling / almost there / not mastered yet / mastered
 - Filter by difficulty
 - Toggle shuffling (on by default — never memorize order, only material)
+- See the question count, file count, and how many are exam-ready before you start
 
 ### In-session keyboard shortcuts
 
@@ -100,9 +103,15 @@ The setup dialog lets you:
 | `1` | Grade: struggling |
 | `2` | Grade: almost |
 | `3` | Grade: mastered |
+| `S` | Skip — requeues the question at the end, ungraded |
+| `U` | Undo the last grade (also restores the status in the file) |
 | `Esc` | End the session |
 
 Every grade is saved to the file immediately. If you edit the file during a session, the plugin detects it and skips writing to questions that changed — nothing gets corrupted.
+
+### Finishing early is normal
+
+Ending a session before all questions are answered is a first-class flow, not an error: hit `Esc` or the **End session** button whenever you run out of time. The summary shows how many questions remain unanswered, and those questions keep their current status — nothing is penalized. The session history counts only what you actually answered.
 
 ### Session history
 

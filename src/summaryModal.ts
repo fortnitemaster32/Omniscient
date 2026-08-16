@@ -43,6 +43,10 @@ export class SummaryModal extends Modal {
         cell('Mastered', String(counts.mastered), 'omniscient-summary-good');
         cell('Almost', String(counts.almost), 'omniscient-summary-warn');
         cell('Struggling', String(counts.struggling), 'omniscient-summary-bad');
+        const remaining = total - counts.answered;
+        if (remaining > 0) {
+            cell('Remaining', String(remaining));
+        }
 
         if (this.options.failedWrites > 0) {
             contentEl.createDiv({

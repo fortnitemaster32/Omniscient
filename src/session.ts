@@ -1,6 +1,6 @@
 /** In-memory quiz session state. */
 
-import type { GradeKind, QuestionBlock, QuizSessionConfig } from './types';
+import type { GradeKind, QuestionBlock, QuestionStatus, QuizSessionConfig } from './types';
 
 export interface SessionQuestion {
     block: QuestionBlock;
@@ -13,6 +13,12 @@ export interface SessionCounts {
     mastered: number;
     almost: number;
     struggling: number;
+}
+
+interface GradedEntry {
+    item: SessionQuestion;
+    prevStatus: QuestionStatus | undefined;
+    prevPasses: number;
 }
 
 function matchesFilter(block: QuestionBlock, config: QuizSessionConfig): boolean {
@@ -50,24 +56,30 @@ function shuffle<T>(items: T[]): void {
 
 export class QuizSession {
     readonly total: number;
-    private readonly items: SessionQuestion[];
-    private cursor = 0;
+    /** Questions still to be answered, in order. */
+    private queue: SessionQuestion[];
+    /** Graded questions with the state needed to undo them, newest last. */
+    private gradedHistory: GradedEntry[] = [];
 
     constructor(blocks: QuestionBlock[], config: QuizSessionConfig) {
         const filtered = blocks.filter((b) => matchesFilter(b, config));
-        this.items = filtered.map((block) => ({ block, grade: null }));
+        this.queue = filtered.map((block) => ({ block, grade: null }));
         if (config.shuffle) {
-            shuffle(this.items);
+            shuffle(this.queue);
         }
-        this.total = this.items.length;
+        this.total = this.queue.length;
     }
 
     get current(): SessionQuestion | null {
-        return this.items[this.cursor] ?? null;
+        return this.queue[0] ?? null;
     }
 
     get isComplete(): boolean {
-        return this.cursor >= this.items.length;
+        return this.queue.length === 0;
+    }
+
+    get hasUndo(): boolean {
+        return this.gradedHistory.length > 0;
     }
 
     get counts(): SessionCounts {
@@ -77,14 +89,15 @@ export class QuizSession {
             almost: 0,
             struggling: 0,
         };
-        for (const item of this.items) {
-            if (item.grade === null) {
+        for (const entry of this.gradedHistory) {
+            const grade = entry.item.grade;
+            if (grade === null) {
                 continue;
             }
             counts.answered++;
-            if (item.grade === 'Mastered') {
+            if (grade === 'Mastered') {
                 counts.mastered++;
-            } else if (item.grade === 'Almost') {
+            } else if (grade === 'Almost') {
                 counts.almost++;
             } else {
                 counts.struggling++;
@@ -94,18 +107,30 @@ export class QuizSession {
     }
 
     /**
-     * Grades the current question and advances. Updates the block's status
-     * and consecutive-pass counter according to the quiz-and-recall method:
-     * a Mastered grade increments the pass counter (resetting it if the
-     * previous grade was anything else); any other grade resets it.
+     * Grades the current question and removes it from the queue. Updates the
+     * block's status and consecutive-pass counter according to the
+     * quiz-and-recall method: a Mastered grade increments the pass counter
+     * (resetting it if the previous grade was anything else); any other
+     * grade resets it.
      */
     gradeCurrent(grade: GradeKind): SessionQuestion | null {
         const item = this.current;
         if (item === null) {
             return null;
         }
+        this.queue.shift();
+        this.applyGrade(item, grade);
+        return item;
+    }
+
+    private applyGrade(item: SessionQuestion, grade: GradeKind): void {
         item.grade = grade;
         const block = item.block;
+        this.gradedHistory.push({
+            item,
+            prevStatus: block.status,
+            prevPasses: block.passes,
+        });
         if (grade === 'Mastered') {
             block.passes = block.status === 'Mastered' ? block.passes + 1 : 1;
             block.status = 'Mastered';
@@ -113,7 +138,36 @@ export class QuizSession {
             block.status = grade;
             block.passes = 0;
         }
-        this.cursor++;
+    }
+
+    /**
+     * Moves the current question to the end of the queue without grading it.
+     * Skipping is how you defer a question: it comes back later in the same
+     * session and remains unanswered if the session ends first.
+     */
+    skipCurrent(): SessionQuestion | null {
+        const item = this.current;
+        if (item === null) {
+            return null;
+        }
+        this.queue.shift();
+        this.queue.push(item);
         return item;
+    }
+
+    /**
+     * Reverts the most recent grade: restores the block's previous status
+     * and pass counter and puts the question back at the front of the queue.
+     */
+    undoLast(): SessionQuestion | null {
+        const entry = this.gradedHistory.pop();
+        if (entry === undefined) {
+            return null;
+        }
+        entry.item.grade = null;
+        entry.item.block.status = entry.prevStatus;
+        entry.item.block.passes = entry.prevPasses;
+        this.queue.unshift(entry.item);
+        return entry.item;
     }
 }

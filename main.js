@@ -24,7 +24,7 @@ __export(main_exports, {
   default: () => OmniscientPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian6 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 
 // src/filePickerModal.ts
 var import_obsidian = require("obsidian");
@@ -43,6 +43,25 @@ var QuizFilePicker = class extends import_obsidian.FuzzySuggestModal {
   }
   onChooseItem(item) {
     void this.plugin.startQuizFlow(item);
+  }
+};
+
+// src/folderPickModal.ts
+var import_obsidian2 = require("obsidian");
+var FolderPickModal = class extends import_obsidian2.FuzzySuggestModal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+    this.setPlaceholder("Pick a folder");
+  }
+  getItems() {
+    return this.app.vault.getAllLoadedFiles().filter((file) => file instanceof import_obsidian2.TFolder);
+  }
+  getItemText(item) {
+    return item.path === "/" ? "/" : item.path;
+  }
+  onChooseItem(item) {
+    void this.plugin.startFolderQuizFlow(item);
   }
 };
 
@@ -194,6 +213,7 @@ function parseQuestions(content, difficultyLabels) {
         headerIndex: i,
         headerLine: lines[i],
         stem: header.lineStem,
+        sourcePath: "",
         questionBody: "",
         answerBody: "",
         difficulty: meta.difficulty,
@@ -255,8 +275,59 @@ function patchQuestionHeader(content, block, newLine, difficultyLabels) {
   return content;
 }
 
-// src/quizView.ts
+// src/progressModal.ts
 var import_obsidian3 = require("obsidian");
+var ProgressModal = class extends import_obsidian3.Modal {
+  constructor(app, fileBasename, summary) {
+    super(app);
+    this.fileBasename = fileBasename;
+    this.summary = summary;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    const { summary } = this;
+    this.setTitle("Quiz progress");
+    contentEl.createDiv({
+      cls: "omniscient-summary-file",
+      text: this.fileBasename
+    });
+    const grid = contentEl.createDiv({ cls: "omniscient-summary-grid" });
+    const cell = (label, value, cls) => {
+      const div = grid.createDiv({ cls: "omniscient-summary-cell" });
+      div.createDiv({ cls: "omniscient-summary-value", text: value });
+      div.createDiv({ cls: "omniscient-summary-label", text: label });
+      if (cls) {
+        div.addClass(cls);
+      }
+    };
+    cell("Exam-ready", `${summary.examReady}/${summary.total}`, "omniscient-summary-good");
+    cell("Mastered", String(summary.mastered), "omniscient-summary-good");
+    cell("Almost", String(summary.almost), "omniscient-summary-warn");
+    cell("Struggling", String(summary.struggling), "omniscient-summary-bad");
+    cell("New", String(summary.newCount));
+    if (summary.byDifficulty.length > 0) {
+      const difficulties = contentEl.createDiv({ cls: "omniscient-progress-section" });
+      difficulties.createDiv({ cls: "omniscient-summary-label", text: "By difficulty" });
+      for (const entry of summary.byDifficulty) {
+        difficulties.createDiv({
+          cls: "omniscient-progress-row",
+          text: `${entry.label}: ${entry.count}`
+        });
+      }
+    }
+    new import_obsidian3.Setting(contentEl).addButton((button) => {
+      button.setButtonText("Done").onClick(() => {
+        this.close();
+      });
+    });
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
+// src/quizView.ts
+var import_obsidian5 = require("obsidian");
 
 // src/session.ts
 function matchesFilter(block, config) {
@@ -290,20 +361,24 @@ function shuffle(items) {
 }
 var QuizSession = class {
   constructor(blocks, config) {
-    this.cursor = 0;
+    /** Graded questions with the state needed to undo them, newest last. */
+    this.gradedHistory = [];
     const filtered = blocks.filter((b) => matchesFilter(b, config));
-    this.items = filtered.map((block) => ({ block, grade: null }));
+    this.queue = filtered.map((block) => ({ block, grade: null }));
     if (config.shuffle) {
-      shuffle(this.items);
+      shuffle(this.queue);
     }
-    this.total = this.items.length;
+    this.total = this.queue.length;
   }
   get current() {
     var _a;
-    return (_a = this.items[this.cursor]) != null ? _a : null;
+    return (_a = this.queue[0]) != null ? _a : null;
   }
   get isComplete() {
-    return this.cursor >= this.items.length;
+    return this.queue.length === 0;
+  }
+  get hasUndo() {
+    return this.gradedHistory.length > 0;
   }
   get counts() {
     const counts = {
@@ -312,14 +387,15 @@ var QuizSession = class {
       almost: 0,
       struggling: 0
     };
-    for (const item of this.items) {
-      if (item.grade === null) {
+    for (const entry of this.gradedHistory) {
+      const grade = entry.item.grade;
+      if (grade === null) {
         continue;
       }
       counts.answered++;
-      if (item.grade === "Mastered") {
+      if (grade === "Mastered") {
         counts.mastered++;
-      } else if (item.grade === "Almost") {
+      } else if (grade === "Almost") {
         counts.almost++;
       } else {
         counts.struggling++;
@@ -328,18 +404,29 @@ var QuizSession = class {
     return counts;
   }
   /**
-   * Grades the current question and advances. Updates the block's status
-   * and consecutive-pass counter according to the quiz-and-recall method:
-   * a Mastered grade increments the pass counter (resetting it if the
-   * previous grade was anything else); any other grade resets it.
+   * Grades the current question and removes it from the queue. Updates the
+   * block's status and consecutive-pass counter according to the
+   * quiz-and-recall method: a Mastered grade increments the pass counter
+   * (resetting it if the previous grade was anything else); any other
+   * grade resets it.
    */
   gradeCurrent(grade) {
     const item = this.current;
     if (item === null) {
       return null;
     }
+    this.queue.shift();
+    this.applyGrade(item, grade);
+    return item;
+  }
+  applyGrade(item, grade) {
     item.grade = grade;
     const block = item.block;
+    this.gradedHistory.push({
+      item,
+      prevStatus: block.status,
+      prevPasses: block.passes
+    });
     if (grade === "Mastered") {
       block.passes = block.status === "Mastered" ? block.passes + 1 : 1;
       block.status = "Mastered";
@@ -347,14 +434,41 @@ var QuizSession = class {
       block.status = grade;
       block.passes = 0;
     }
-    this.cursor++;
+  }
+  /**
+   * Moves the current question to the end of the queue without grading it.
+   * Skipping is how you defer a question: it comes back later in the same
+   * session and remains unanswered if the session ends first.
+   */
+  skipCurrent() {
+    const item = this.current;
+    if (item === null) {
+      return null;
+    }
+    this.queue.shift();
+    this.queue.push(item);
     return item;
+  }
+  /**
+   * Reverts the most recent grade: restores the block's previous status
+   * and pass counter and puts the question back at the front of the queue.
+   */
+  undoLast() {
+    const entry = this.gradedHistory.pop();
+    if (entry === void 0) {
+      return null;
+    }
+    entry.item.grade = null;
+    entry.item.block.status = entry.prevStatus;
+    entry.item.block.passes = entry.prevPasses;
+    this.queue.unshift(entry.item);
+    return entry.item;
   }
 };
 
 // src/summaryModal.ts
-var import_obsidian2 = require("obsidian");
-var SummaryModal = class extends import_obsidian2.Modal {
+var import_obsidian4 = require("obsidian");
+var SummaryModal = class extends import_obsidian4.Modal {
   constructor(app, options) {
     super(app);
     this.options = options;
@@ -383,20 +497,24 @@ var SummaryModal = class extends import_obsidian2.Modal {
     cell("Mastered", String(counts.mastered), "omniscient-summary-good");
     cell("Almost", String(counts.almost), "omniscient-summary-warn");
     cell("Struggling", String(counts.struggling), "omniscient-summary-bad");
+    const remaining = total - counts.answered;
+    if (remaining > 0) {
+      cell("Remaining", String(remaining));
+    }
     if (this.options.failedWrites > 0) {
       contentEl.createDiv({
         cls: "omniscient-summary-note",
         text: `${this.options.failedWrites} question(s) could not be saved because the file changed during the session.`
       });
     }
-    new import_obsidian2.Setting(contentEl).addButton((button) => {
+    new import_obsidian4.Setting(contentEl).addButton((button) => {
       button.setButtonText("Done").onClick(() => {
         this.close();
         this.options.onDone();
       });
     });
     if (counts.struggling > 0) {
-      new import_obsidian2.Setting(contentEl).addButton((button) => {
+      new import_obsidian4.Setting(contentEl).addButton((button) => {
         button.setButtonText("Review struggling questions").setCta().onClick(() => {
           this.close();
           this.options.onReviewStruggling();
@@ -411,13 +529,12 @@ var SummaryModal = class extends import_obsidian2.Modal {
 
 // src/quizView.ts
 var QUIZ_VIEW_TYPE = "omniscient-quiz-view";
-var QuizView = class extends import_obsidian3.ItemView {
+var QuizView = class extends import_obsidian5.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
     this.config = null;
     this.session = null;
-    this.file = null;
     this.revealed = false;
     this.finished = false;
     this.failedWrites = 0;
@@ -427,6 +544,7 @@ var QuizView = class extends import_obsidian3.ItemView {
     // ------------------------------------------------------------------
     this.contentArea = null;
     this.hintEl = null;
+    this.undoButtonEl = null;
     this.progressTextEl = null;
     this.progressFillEl = null;
   }
@@ -434,18 +552,28 @@ var QuizView = class extends import_obsidian3.ItemView {
     return QUIZ_VIEW_TYPE;
   }
   getDisplayText() {
-    var _a, _b;
-    return `Omniscient \u2014 ${(_b = (_a = this.file) == null ? void 0 : _a.basename) != null ? _b : "quiz"}`;
+    return `Omniscient \u2014 ${this.displayName()}`;
   }
   getIcon() {
     return "target";
+  }
+  displayName() {
+    var _a, _b, _c;
+    const paths = (_a = this.config) == null ? void 0 : _a.filePaths;
+    if (!paths || paths.length === 0) {
+      return "Quiz";
+    }
+    if (paths.length === 1) {
+      return (_c = (_b = paths[0].split("/").pop()) == null ? void 0 : _b.replace(/\.md$/i, "")) != null ? _c : "Quiz";
+    }
+    return `${paths.length} files`;
   }
   async onOpen() {
     try {
       await this.setup();
     } catch (error) {
       console.error("Omniscient: failed to open quiz view", error);
-      new import_obsidian3.Notice("Could not open the quiz view. See the developer console for details.");
+      new import_obsidian5.Notice("Could not open the quiz view. See the developer console for details.");
       this.leaf.detach();
     }
   }
@@ -456,24 +584,33 @@ var QuizView = class extends import_obsidian3.ItemView {
       return;
     }
     this.config = config;
-    const abstract = this.app.vault.getAbstractFileByPath(config.filePath);
-    if (!(abstract instanceof import_obsidian3.TFile)) {
-      new import_obsidian3.Notice("The quiz file no longer exists.");
+    const labels = this.plugin.getDifficultyLabels();
+    const blocks = [];
+    let foundFiles = 0;
+    for (const path of config.filePaths) {
+      const abstract = this.app.vault.getAbstractFileByPath(path);
+      if (!(abstract instanceof import_obsidian5.TFile)) {
+        continue;
+      }
+      try {
+        const content = await this.app.vault.read(abstract);
+        const parsed = parseQuestions(content, labels);
+        for (const question of parsed.questions) {
+          question.sourcePath = path;
+        }
+        blocks.push(...parsed.questions);
+        foundFiles++;
+      } catch (e) {
+      }
+    }
+    if (foundFiles === 0) {
+      new import_obsidian5.Notice("The quiz file(s) no longer exist.");
       this.leaf.detach();
       return;
     }
-    this.file = abstract;
-    try {
-      const content = await this.app.vault.read(this.file);
-      const { questions } = parseQuestions(content, this.plugin.getDifficultyLabels());
-      this.session = new QuizSession(questions, config);
-    } catch (e) {
-      new import_obsidian3.Notice("Could not read the quiz file.");
-      this.leaf.detach();
-      return;
-    }
+    this.session = new QuizSession(blocks, config);
     if (this.session.total === 0) {
-      new import_obsidian3.Notice("No questions match the selected filters.");
+      new import_obsidian5.Notice("No questions match the selected filters.");
       this.leaf.detach();
       return;
     }
@@ -493,7 +630,6 @@ var QuizView = class extends import_obsidian3.ItemView {
   // Rendering
   // ------------------------------------------------------------------
   renderShell() {
-    var _a, _b;
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("omniscient-quiz-view");
@@ -505,10 +641,17 @@ var QuizView = class extends import_obsidian3.ItemView {
     const header = contentEl.createDiv({ cls: "omniscient-quiz-header" });
     header.createDiv({
       cls: "omniscient-quiz-title",
-      text: (_b = (_a = this.file) == null ? void 0 : _a.basename) != null ? _b : "Quiz"
+      text: this.displayName()
     });
     header.createDiv({ cls: "omniscient-quiz-spacer" });
     this.progressTextEl = header.createDiv({ cls: "omniscient-progress-text" });
+    const undoButton = header.createEl("button", {
+      cls: "clickable-icon",
+      attr: { "aria-label": "Undo last grade", "data-tooltip-position": "top" }
+    });
+    undoButton.setText("Undo");
+    undoButton.addEventListener("click", () => this.undo());
+    this.undoButtonEl = undoButton;
     const endButton = header.createEl("button", {
       cls: "clickable-icon",
       attr: { "aria-label": "End session", "data-tooltip-position": "top" }
@@ -520,11 +663,11 @@ var QuizView = class extends import_obsidian3.ItemView {
     this.contentArea = contentEl.createDiv({ cls: "omniscient-content" });
     this.hintEl = contentEl.createDiv({ cls: "omniscient-hint" });
     this.hintEl.setText(
-      "Space or enter reveals the answer \xB7 1 struggling \xB7 2 almost \xB7 3 mastered \xB7 esc ends"
+      "Space or enter reveals \xB7 1 struggling \xB7 2 almost \xB7 3 mastered \xB7 s skip \xB7 u undo \xB7 esc ends"
     );
   }
   renderQuestion() {
-    var _a, _b, _c, _d, _e;
+    var _a;
     const session = this.session;
     if (!session || !this.contentArea) {
       return;
@@ -535,35 +678,44 @@ var QuizView = class extends import_obsidian3.ItemView {
     }
     const area = this.contentArea;
     area.empty();
+    if (this.undoButtonEl) {
+      this.undoButtonEl.disabled = !session.hasUndo;
+    }
     const meta = (_a = item.block.difficulty) != null ? _a : "";
     const status = item.block.status ? item.block.status === "Mastered" ? `Mastered(${item.block.passes})` : item.block.status : "New";
     const metaText = meta.length > 0 ? `Difficulty: ${meta} \xB7 Status: ${status}` : `Status: ${status}`;
     const card = area.createDiv({ cls: "omniscient-question-card" });
     card.createDiv({ cls: "omniscient-question-meta", text: metaText });
-    void import_obsidian3.MarkdownRenderer.render(
+    void import_obsidian5.MarkdownRenderer.render(
       this.app,
       item.block.questionBody,
       card,
-      (_c = (_b = this.file) == null ? void 0 : _b.path) != null ? _c : "",
+      item.block.sourcePath,
       this
     );
+    const actions = area.createDiv({ cls: "omniscient-actions" });
     if (!this.revealed) {
-      const actions = area.createDiv({ cls: "omniscient-actions" });
       const reveal = actions.createEl("button", {
         cls: "mod-cta",
         text: "Reveal answer",
         attr: { "aria-label": "Reveal the answer" }
       });
       reveal.addEventListener("click", () => this.reveal());
+      const skip = actions.createEl("button", {
+        cls: "omniscient-grade-btn",
+        text: "Skip",
+        attr: { "aria-label": "Skip this question for now" }
+      });
+      skip.addEventListener("click", () => this.skip());
     } else {
       const answerCard = area.createDiv({ cls: "omniscient-answer-card" });
       answerCard.createDiv({ cls: "omniscient-answer-label", text: "Answer" });
       if (item.block.answerBody.length > 0) {
-        void import_obsidian3.MarkdownRenderer.render(
+        void import_obsidian5.MarkdownRenderer.render(
           this.app,
           item.block.answerBody,
           answerCard,
-          (_e = (_d = this.file) == null ? void 0 : _d.path) != null ? _e : "",
+          item.block.sourcePath,
           this
         );
       } else {
@@ -572,7 +724,6 @@ var QuizView = class extends import_obsidian3.ItemView {
           text: "No answer provided for this question."
         });
       }
-      const actions = area.createDiv({ cls: "omniscient-actions" });
       const gradeButtons = [
         { grade: "Struggling", label: "Struggling", cls: "mod-warning" },
         { grade: "Almost", label: "Almost" },
@@ -589,6 +740,12 @@ var QuizView = class extends import_obsidian3.ItemView {
         }
         button.addEventListener("click", () => this.grade(def.grade));
       }
+      const skip = actions.createEl("button", {
+        cls: "omniscient-grade-btn",
+        text: "Skip",
+        attr: { "aria-label": "Skip this question for now" }
+      });
+      skip.addEventListener("click", () => this.skip());
     }
     this.updateProgress();
     this.containerEl.focus();
@@ -624,12 +781,23 @@ var QuizView = class extends import_obsidian3.ItemView {
       }
       return;
     }
-    if (event.key === "1" || event.key === "2" || event.key === "3") {
+    const key = event.key.toLowerCase();
+    if (key === "1" || key === "2" || key === "3") {
       event.preventDefault();
       if (this.revealed) {
         const grades = ["Struggling", "Almost", "Mastered"];
         this.grade(grades[Number.parseInt(event.key, 10) - 1]);
       }
+      return;
+    }
+    if (key === "s") {
+      event.preventDefault();
+      this.skip();
+      return;
+    }
+    if (key === "u") {
+      event.preventDefault();
+      this.undo();
       return;
     }
     if (event.key === "Escape") {
@@ -639,6 +807,28 @@ var QuizView = class extends import_obsidian3.ItemView {
   }
   reveal() {
     this.revealed = true;
+    this.renderQuestion();
+  }
+  skip() {
+    const session = this.session;
+    if (session === null || this.finished) {
+      return;
+    }
+    session.skipCurrent();
+    this.revealed = false;
+    this.renderQuestion();
+  }
+  undo() {
+    const session = this.session;
+    if (session === null || this.finished) {
+      return;
+    }
+    const item = session.undoLast();
+    if (item === null) {
+      return;
+    }
+    this.enqueueWrite(item.block);
+    this.revealed = false;
     this.renderQuestion();
   }
   grade(grade) {
@@ -660,8 +850,13 @@ var QuizView = class extends import_obsidian3.ItemView {
     this.renderQuestion();
   }
   enqueueWrite(block) {
-    const file = this.file;
-    if (file === null || this.config === null) {
+    var _a;
+    const path = block.sourcePath || ((_a = this.config) == null ? void 0 : _a.filePaths[0]);
+    if (!path) {
+      return;
+    }
+    const abstract = this.app.vault.getAbstractFileByPath(path);
+    if (!(abstract instanceof import_obsidian5.TFile)) {
       return;
     }
     const labels = this.plugin.getDifficultyLabels();
@@ -669,7 +864,7 @@ var QuizView = class extends import_obsidian3.ItemView {
     this.writeQueue = this.writeQueue.then(async () => {
       try {
         await this.app.vault.process(
-          file,
+          abstract,
           (content) => patchQuestionHeader(content, block, newLine, labels)
         );
       } catch (error) {
@@ -688,16 +883,16 @@ var QuizView = class extends import_obsidian3.ItemView {
     const counts = session.counts;
     void this.plugin.recordSession({
       date: (/* @__PURE__ */ new Date()).toISOString(),
-      filePath: (_b = (_a = this.config) == null ? void 0 : _a.filePath) != null ? _b : "",
+      filePath: (_b = (_a = this.config) == null ? void 0 : _a.filePaths.join(", ")) != null ? _b : "",
       total: session.total,
       answered: counts.answered,
       mastered: counts.mastered,
       almost: counts.almost,
       struggling: counts.struggling
     });
-    const file = this.file;
+    const filePaths = (_c = this.config) == null ? void 0 : _c.filePaths;
     new SummaryModal(this.app, {
-      fileBasename: (_c = file == null ? void 0 : file.basename) != null ? _c : "Quiz",
+      fileBasename: this.displayName(),
       counts,
       total: session.total,
       failedWrites: this.failedWrites,
@@ -705,8 +900,8 @@ var QuizView = class extends import_obsidian3.ItemView {
         this.leaf.detach();
       },
       onReviewStruggling: () => {
-        if (file !== null) {
-          void this.plugin.startQuizFlow(file, {
+        if (filePaths) {
+          void this.plugin.startQuizFlowFromPaths(filePaths, {
             statusFilter: "struggling"
           });
         }
@@ -716,7 +911,7 @@ var QuizView = class extends import_obsidian3.ItemView {
 };
 
 // src/settings.ts
-var import_obsidian4 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 var DEFAULT_SETTINGS = {
   difficultyLabels: "Easy, Medium, Hard",
   masteredPasses: 2,
@@ -732,7 +927,7 @@ function formatSessionLine(record) {
   const date = record.date.slice(0, 10);
   return `${date} \xB7 ${fileName} \xB7 ${record.mastered}/${record.answered} mastered`;
 }
-var OmniscientSettingTab = class extends import_obsidian4.PluginSettingTab {
+var OmniscientSettingTab = class extends import_obsidian6.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -797,7 +992,7 @@ var OmniscientSettingTab = class extends import_obsidian4.PluginSettingTab {
         desc: "Remove all recorded sessions from this device.",
         action: () => {
           void this.plugin.clearHistory();
-          new import_obsidian4.Notice("Session history cleared.");
+          new import_obsidian6.Notice("Session history cleared.");
           this.update();
         }
       }
@@ -806,7 +1001,7 @@ var OmniscientSettingTab = class extends import_obsidian4.PluginSettingTab {
 };
 
 // src/setupModal.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 var STATUS_OPTIONS = {
   all: "All questions",
   new: "New",
@@ -815,12 +1010,14 @@ var STATUS_OPTIONS = {
   "not-mastered": "Not mastered yet",
   mastered: "Mastered"
 };
-var SetupModal = class extends import_obsidian5.Modal {
-  constructor(app, plugin, filePath, questionCount, onStart) {
+var SetupModal = class extends import_obsidian7.Modal {
+  constructor(app, plugin, filePaths, questionCount, fileCount, examReady, onStart) {
     super(app);
     this.plugin = plugin;
-    this.filePath = filePath;
+    this.filePaths = filePaths;
     this.questionCount = questionCount;
+    this.fileCount = fileCount;
+    this.examReady = examReady;
     this.onStart = onStart;
     this.statusFilter = "all";
     this.difficultyFilter = "all";
@@ -832,14 +1029,16 @@ var SetupModal = class extends import_obsidian5.Modal {
       this.render();
     } catch (error) {
       console.error("Omniscient: failed to render setup dialog", error);
-      new import_obsidian5.Notice("Omniscient setup failed. See the developer console for details.");
+      new import_obsidian7.Notice("Omniscient setup failed. See the developer console for details.");
       this.close();
     }
   }
   render() {
     const { contentEl } = this;
     this.setTitle("Quiz setup");
-    new import_obsidian5.Setting(contentEl).setName("Questions").setDesc(`${this.questionCount} questions in the file`).addDropdown((dropdown) => {
+    new import_obsidian7.Setting(contentEl).setName("Questions").setDesc(
+      `${this.questionCount} questions${this.fileCount > 1 ? ` across ${this.fileCount} files` : ""} \xB7 ${this.examReady} exam-ready`
+    ).addDropdown((dropdown) => {
       for (const [value, label] of Object.entries(STATUS_OPTIONS)) {
         dropdown.addOption(value, label);
       }
@@ -848,7 +1047,7 @@ var SetupModal = class extends import_obsidian5.Modal {
       });
     });
     if (this.difficultyLabels.length > 0) {
-      new import_obsidian5.Setting(contentEl).setName("Difficulty").setDesc("Only include questions with this difficulty").addDropdown((dropdown) => {
+      new import_obsidian7.Setting(contentEl).setName("Difficulty").setDesc("Only include questions with this difficulty").addDropdown((dropdown) => {
         dropdown.addOption("all", "All difficulties");
         for (const label of this.difficultyLabels) {
           dropdown.addOption(label, label);
@@ -858,16 +1057,16 @@ var SetupModal = class extends import_obsidian5.Modal {
         });
       });
     }
-    new import_obsidian5.Setting(contentEl).setName("Shuffle order").setDesc("Randomize the question order").addToggle((toggle) => {
+    new import_obsidian7.Setting(contentEl).setName("Shuffle order").setDesc("Randomize the question order").addToggle((toggle) => {
       toggle.setValue(this.shuffle).onChange((value) => {
         this.shuffle = value;
       });
     });
-    new import_obsidian5.Setting(contentEl).addButton((button) => {
+    new import_obsidian7.Setting(contentEl).addButton((button) => {
       button.setButtonText("Start session").setCta().onClick(() => {
         this.close();
         this.onStart({
-          filePath: this.filePath,
+          filePaths: this.filePaths,
           shuffle: this.shuffle,
           statusFilter: this.statusFilter,
           difficultyFilter: this.difficultyFilter,
@@ -881,8 +1080,45 @@ var SetupModal = class extends import_obsidian5.Modal {
   }
 };
 
+// src/stats.ts
+function summarizeBlocks(blocks, masteredPasses) {
+  var _a;
+  const summary = {
+    total: blocks.length,
+    examReady: 0,
+    newCount: 0,
+    struggling: 0,
+    almost: 0,
+    mastered: 0,
+    byDifficulty: []
+  };
+  const difficultyCounts = /* @__PURE__ */ new Map();
+  for (const block of blocks) {
+    if (block.status === "Struggling") {
+      summary.struggling++;
+    } else if (block.status === "Almost") {
+      summary.almost++;
+    } else if (block.status === "Mastered") {
+      summary.mastered++;
+      if (block.passes >= masteredPasses) {
+        summary.examReady++;
+      }
+    } else {
+      summary.newCount++;
+    }
+    if (block.difficulty !== void 0) {
+      difficultyCounts.set(block.difficulty, ((_a = difficultyCounts.get(block.difficulty)) != null ? _a : 0) + 1);
+    }
+  }
+  summary.byDifficulty = [...difficultyCounts.entries()].map(([label, count]) => ({
+    label,
+    count
+  }));
+  return summary;
+}
+
 // src/main.ts
-var OmniscientPlugin = class extends import_obsidian6.Plugin {
+var OmniscientPlugin = class extends import_obsidian8.Plugin {
   constructor() {
     super(...arguments);
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
@@ -910,6 +1146,18 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
           void this.pickQuizFile();
         }
       });
+      this.addCommand({
+        id: "start-folder-quiz",
+        name: "Start quiz from folder",
+        callback: () => {
+          new FolderPickModal(this.app, this).open();
+        }
+      });
+      this.addCommand({
+        id: "show-progress",
+        name: "Show quiz progress",
+        checkCallback: (checking) => this.showProgressCommand(checking)
+      });
       this.addRibbonIcon("target", "Start quiz", () => {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === "md") {
@@ -920,7 +1168,7 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
       });
     } catch (error) {
       console.error("Omniscient: failed to load", error);
-      new import_obsidian6.Notice("Omniscient failed to load. See the developer console for details.");
+      new import_obsidian8.Notice("Omniscient failed to load. See the developer console for details.");
     }
   }
   getDifficultyLabels() {
@@ -939,7 +1187,7 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
     }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
-      new import_obsidian6.Notice("Open a markdown file first, then run this command.");
+      new import_obsidian8.Notice("Open a Markdown file first, then run this command.");
       return true;
     }
     void this.startQuizFlow(file);
@@ -953,33 +1201,76 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
    * over the settings defaults.
    */
   async startQuizFlow(file, preset) {
-    let content;
-    try {
-      content = await this.app.vault.read(file);
-    } catch (e) {
-      new import_obsidian6.Notice("Could not read the selected file.");
+    await this.startQuizFlowFromPaths([file.path], preset);
+  }
+  /** Starts a quiz over every markdown file inside a folder tree. */
+  async startFolderQuizFlow(folder) {
+    const prefix = `${folder.path}/`;
+    const paths = this.app.vault.getMarkdownFiles().filter((file) => file.path.startsWith(prefix)).map((file) => file.path);
+    if (paths.length === 0) {
+      new import_obsidian8.Notice("No Markdown files in this folder.");
       return;
     }
-    const questions = parseQuestions(content, this.getDifficultyLabels()).questions;
-    if (questions.length === 0) {
-      new import_obsidian6.Notice(`No questions found in ${file.basename}.`);
+    await this.startQuizFlowFromPaths(paths);
+  }
+  /**
+   * Reads the files, validates they contain questions, and starts a
+   * session. Without a preset, shows the setup modal first. With a preset
+   * (e.g. "review struggling") the session starts immediately using the
+   * preset over the settings defaults.
+   */
+  async startQuizFlowFromPaths(filePaths, preset) {
+    const labels = this.getDifficultyLabels();
+    const blocks = [];
+    let foundFiles = 0;
+    for (const path of filePaths) {
+      const abstract = this.app.vault.getAbstractFileByPath(path);
+      if (!(abstract instanceof import_obsidian8.TFile)) {
+        continue;
+      }
+      try {
+        const content = await this.app.vault.read(abstract);
+        const parsed = parseQuestions(content, labels);
+        for (const question of parsed.questions) {
+          question.sourcePath = path;
+        }
+        blocks.push(...parsed.questions);
+        foundFiles++;
+      } catch (e) {
+      }
+    }
+    if (foundFiles === 0) {
+      new import_obsidian8.Notice("Could not read the selected file(s).");
+      return;
+    }
+    if (blocks.length === 0) {
+      new import_obsidian8.Notice("No questions found in the selected file(s).");
       return;
     }
     if (preset) {
       const config = {
-        filePath: file.path,
+        filePaths,
         shuffle: this.settings.shuffleByDefault,
         statusFilter: "all",
         difficultyFilter: "all",
         masteredPasses: this.settings.masteredPasses,
         ...preset
       };
-      void this.openQuizView(file, config);
+      void this.openQuizView(config);
       return;
     }
-    new SetupModal(this.app, this, file.path, questions.length, (config) => {
-      void this.openQuizView(file, config);
-    }).open();
+    const summary = summarizeBlocks(blocks, this.settings.masteredPasses);
+    new SetupModal(
+      this.app,
+      this,
+      filePaths,
+      blocks.length,
+      foundFiles,
+      summary.examReady,
+      (config) => {
+        void this.openQuizView(config);
+      }
+    ).open();
   }
   /**
    * Returns the config for a quiz view that is about to open, and clears
@@ -990,17 +1281,45 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
     this.pendingQuizConfig = null;
     return config;
   }
-  async openQuizView(file, config) {
+  async openQuizView(config) {
     try {
-      this.pendingQuizConfig = Object.assign({}, config, { filePath: file.path });
+      this.pendingQuizConfig = config;
       const leaf = this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: QUIZ_VIEW_TYPE, active: true });
       void this.app.workspace.revealLeaf(leaf);
     } catch (error) {
       this.pendingQuizConfig = null;
       console.error("Omniscient: failed to open quiz view", error);
-      new import_obsidian6.Notice("Could not open the quiz view. See the developer console for details.");
+      new import_obsidian8.Notice("Could not open the quiz view. See the developer console for details.");
     }
+  }
+  async showProgress(file) {
+    let content;
+    try {
+      content = await this.app.vault.read(file);
+    } catch (e) {
+      new import_obsidian8.Notice("Could not read the selected file.");
+      return;
+    }
+    const questions = parseQuestions(content, this.getDifficultyLabels()).questions;
+    if (questions.length === 0) {
+      new import_obsidian8.Notice(`No questions found in ${file.basename}.`);
+      return;
+    }
+    const summary = summarizeBlocks(questions, this.settings.masteredPasses);
+    new ProgressModal(this.app, file.basename, summary).open();
+  }
+  showProgressCommand(checking) {
+    if (checking) {
+      return true;
+    }
+    const file = this.app.workspace.getActiveFile();
+    if (!file || file.extension !== "md") {
+      new import_obsidian8.Notice("Open a Markdown file first, then run this command.");
+      return true;
+    }
+    void this.showProgress(file);
+    return true;
   }
   async pickQuizFile() {
     const files = [];
@@ -1014,7 +1333,7 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
       }
     }
     if (files.length === 0) {
-      new import_obsidian6.Notice("No quiz files found in the vault.");
+      new import_obsidian8.Notice("No quiz files found in the vault.");
       return;
     }
     new QuizFilePicker(this.app, this, files).open();

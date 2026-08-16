@@ -22,6 +22,8 @@ export interface QuestionBlock {
     headerLine: string;
     /** Header text with recognized trailing metadata tokens removed. */
     stem: string;
+    /** Path of the file this question was parsed from. */
+    sourcePath: string;
     /** Question body as markdown (blockquote prefixes stripped). */
     questionBody: string;
     /** Answer body as markdown (blockquote prefixes stripped). */
@@ -38,7 +40,8 @@ export interface QuestionBlock {
 
 /** Everything needed to run a quiz session. */
 export interface QuizSessionConfig {
-    filePath: string;
+    /** Files whose questions are included in this session. */
+    filePaths: string[];
     shuffle: boolean;
     statusFilter: StatusFilter;
     difficultyFilter: string;

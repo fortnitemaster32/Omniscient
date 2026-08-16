@@ -143,6 +143,15 @@
     margin-bottom: var(--size-4-3);
 }
 
+.omniscient-progress-section {
+    margin-bottom: var(--size-4-3);
+}
+
+.omniscient-progress-row {
+    color: var(--text-normal);
+    padding: 2px 0;
+}
+
 .omniscient-history-list {
     margin: var(--size-4-1) 0;
     padding-left: var(--size-4-4);
