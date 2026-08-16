@@ -152,6 +152,10 @@ Check the status filter and difficulty filter in the setup dialog, and that the 
 | Mastered passes | `2` | Consecutive mastered answers to be exam-ready |
 | Shuffle questions | on | Randomize order at session start |
 
+## Suggesting features
+
+Have an idea for Omniscient? Open an issue on GitHub and describe what you would like it to do. Suggestions grounded in a credible source, such as peer-reviewed research or a popular book on studying, memory, or learning, tend to be considered faster: this plugin is itself built on the method from *How to Be a Straight-A Student*, and a source helps show that a feature genuinely supports the study technique rather than being a gimmick. A source is not required, but it does help.
+
 ## License
 
 Licensed under the MIT license. See [LICENSE](LICENSE).
