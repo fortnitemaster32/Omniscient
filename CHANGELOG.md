@@ -8,7 +8,7 @@ Initial release.
 
 ### Added
 
-- Quiz-and-recall sessions over `> [!Question]` / `> [!Answer]` callout pairs in markdown files
+- Quiz-and-recall sessions over `> [!Question]` / `> [!Success]` callout pairs in markdown files (the answer callout renders green; `[!answer]` is accepted as an alias)
 - Self-grading with three statuses, stored on the question line: `Struggling`, `Almost`, `Mastered(n)` where `n` is the number of consecutive mastered passes
 - Optional difficulty metadata (`Easy`, `Medium`, `Hard` by default, configurable)
 - Status filters (all / new / struggling / almost there / not mastered yet / mastered), difficulty filter, and shuffling

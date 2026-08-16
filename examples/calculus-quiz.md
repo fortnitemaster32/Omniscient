@@ -11,7 +11,7 @@ filter can be tested.
 Format: each question is a callout pair. Metadata follows the pipes:
 
     > [!Question] Question | Difficulty | Status
-    > [!Answer] Answer
+    > [!Success] Answer
 
 Statuses: (none) = new, Struggling, Almost, Mastered(n) where n is the
 number of consecutive mastered passes. Difficulty labels are configurable
@@ -34,7 +34,7 @@ $$
 \lim_{x \to 3} (2x + 1)
 $$
 
-> [!Answer] Answer
+> [!Success] Answer
 
 Just substitute $x = 3$:
 
@@ -54,7 +54,7 @@ State L'Hôpital's rule and when it applies.
 
 What is the derivative of $f(x) = x^2$?
 
-> [!Answer] Answer
+> [!Success] Answer
 
 By the power rule:
 
@@ -66,7 +66,7 @@ $$
 
 State the power rule, then use it to differentiate $x^5$.
 
-> [!Answer] Answer
+> [!Success] Answer
 
 $$
 \frac{d}{dx} \left( x^n \right) = n x^{n-1}
@@ -86,7 +86,7 @@ $$
 f(x) = x^{2} + 3 + \int_{0}^{x} (x + 3) \, dx
 $$
 
-> [!Answer] Answer
+> [!Success] Answer
 
 First evaluate the integral:
 
@@ -120,7 +120,7 @@ $$
 g(x) = \sin(3x^2 + 1)
 $$
 
-> [!Answer] Answer
+> [!Success] Answer
 
 Use the chain rule — differentiate the outer function first, then multiply by the derivative of the inside:
 
@@ -137,7 +137,7 @@ $$
 
 State the Fundamental Theorem of Calculus.
 
-> [!Answer] Answer
+> [!Success] Answer
 
 If $f$ is continuous on $[a, b]$ and $F$ is an antiderivative of $f$, then:
 
@@ -155,7 +155,7 @@ $$
 \int \frac{1}{x} \, dx
 $$
 
-> [!Answer] Answer
+> [!Success] Answer
 
 $$
 \int \frac{1}{x} \, dx = \ln|x| + C
@@ -167,7 +167,7 @@ Remember the absolute value — it makes the antiderivative valid for negative $
 
 Write a Python function that approximates $\int_{0}^{1} x^2 \, dx$ using a Riemann sum with $n$ subintervals.
 
-> [!Answer] Answer
+> [!Success] Answer
 
 ```python
 def riemann_sum(f, a, b, n):
@@ -182,7 +182,7 @@ riemann_sum(lambda x: x**2, 0, 1, 1000)
 
 A car's velocity is $v(t) = 3t^2$ meters per second. How far does it travel between $t = 1$ and $t = 3$ seconds?
 
-> [!Answer] Answer
+> [!Success] Answer
 
 Distance is the integral of velocity:
 

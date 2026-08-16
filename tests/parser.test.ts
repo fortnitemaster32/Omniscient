@@ -131,6 +131,7 @@ test('callout with title word keeps the word in the stem', () => {
     eq(h?.kind, 'question');
     eq(h?.lineStem, '> [!Question] Question');
     eq(h?.tokens, ['Hard', 'Mastered(2)']);
+    eq(parseHeader('> [!Success] Answer', LABELS)?.lineStem, '> [!Success] Answer');
     eq(parseHeader('> [!Answer] Answer', LABELS)?.lineStem, '> [!Answer] Answer');
 });
 
@@ -432,7 +433,7 @@ test('three-space indented headers still parse', () => {
 test('four-space indented question lines are code, not headers', () => {
     const content = [
         '    > [!Question] Question | Hard',
-        '    > [!Answer] Answer',
+        '    > [!Success] Answer',
         '> Question',
         'real body',
         '> Answer',

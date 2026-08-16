@@ -109,7 +109,7 @@ function parseHeader(line, difficultyLabels) {
   const callout = CALLOUT_RE.exec(line);
   if (callout) {
     const type = callout[2].trim().toLowerCase();
-    const kind2 = type.startsWith("question") ? "question" : type.startsWith("answer") ? "answer" : null;
+    const kind2 = type.startsWith("question") ? "question" : type.startsWith("success") || type.startsWith("answer") ? "answer" : null;
     if (!kind2) return null;
     let rest = callout[3];
     const foldable = /^-\s*/.test(rest) ? "-" : "";

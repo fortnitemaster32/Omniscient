@@ -34,7 +34,7 @@ $$
 f(x) = x^{2} + 3 + \int_{0}^{x} x + 3 \, dx
 $$
 
-> [!Answer] Answer
+> [!Success] Answer
 
 The answer is...
 
@@ -44,12 +44,12 @@ The answer is...
 
 Explain what a derivative is and how to compute one.
 
-> [!Answer] Answer
+> [!Success] Answer
 
 The derivative describes the rate of change...
 ```
 
-- A question starts at `> [!Question]` (the title word and metadata are optional: `> [!Question]` alone works, and plain `> Question` is also recognized); everything until the next answer block is the question, everything after is the answer.
+- A question starts at `> [!Question]` (the title word and metadata are optional: `> [!Question]` alone works, and plain `> Question` is also recognized); everything until the next answer block is the question, everything after is the answer. Answer blocks use `> [!Success]` (renders as Obsidian's green callout; `[!answer]` is accepted as an alias).
 - LaTeX (`$$...$$`), code blocks, and nested callouts inside questions and answers are rendered normally.
 - Questions without an answer are fine — the reveal will say so.
 - One file can hold any number of questions; use headings to organize by topic.

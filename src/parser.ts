@@ -10,8 +10,10 @@
  *     2x
  *
  * Both the plain style (`> Question`) and the Obsidian callout style
- * (`> [!question]`) are recognized. Metadata is read from trailing
- * pipe-separated tokens on the question header line: a difficulty label
+ * (`> [!question]`) are recognized. Answers use `> [!success]` (Obsidian's
+ * built-in green callout) or the plain `> Answer` style; `[!answer]` is
+ * still accepted as an alias for files written with the old type. Metadata
+ * is read from trailing pipe-separated tokens on the question header line: a difficulty label
  * (as configured in settings) and/or a status token. Status tokens are
  * `Struggling`, `Almost`, and `Mastered`, where `Mastered` may carry a
  * consecutive-pass counter: `Mastered(2)`.
@@ -115,7 +117,7 @@ export function parseHeader(
         const type = callout[2].trim().toLowerCase();
         const kind = type.startsWith('question')
             ? 'question'
-            : type.startsWith('answer')
+            : type.startsWith('success') || type.startsWith('answer')
               ? 'answer'
               : null;
         if (!kind) return null;
