@@ -19,11 +19,12 @@ import type { QuestionBlock, QuizSessionConfig, SessionRecord } from './types';
 export default class OmniscientPlugin extends Plugin {
     settings: OmniscientSettings = Object.assign({}, DEFAULT_SETTINGS);
     /**
-     * Config handed to the next quiz view that opens. View state is only
-     * available after onOpen() in Obsidian, so the config is passed through
-     * the plugin instead of view state.
+     * Configs handed to quiz views that are about to open. View state is
+     * only available after onOpen() in Obsidian, so configs are passed
+     * through the plugin instead of view state. A queue (not a single slot)
+     * keeps concurrent opens from clobbering each other.
      */
-    private pendingQuizConfig: QuizSessionConfig | null = null;
+    private pendingQuizConfigs: QuizSessionConfig[] = [];
 
     async onload(): Promise<void> {
         try {
@@ -109,7 +110,7 @@ export default class OmniscientPlugin extends Plugin {
 
     /** Starts a quiz over every markdown file inside a folder tree. */
     async startFolderQuizFlow(folder: TFolder): Promise<void> {
-        const prefix = `${folder.path}/`;
+        const prefix = folder.path === '/' ? '' : `${folder.path}/`;
         const paths = this.app.vault
             .getMarkdownFiles()
             .filter((file) => file.path.startsWith(prefix))
@@ -186,23 +187,23 @@ export default class OmniscientPlugin extends Plugin {
     }
 
     /**
-     * Returns the config for a quiz view that is about to open, and clears
-     * the slot. Returns null when the view is restored from a saved layout.
+     * Returns the config for a quiz view that is about to open, in FIFO
+     * order. Returns null when the view is restored from a saved layout.
      */
     consumePendingQuizConfig(): QuizSessionConfig | null {
-        const config = this.pendingQuizConfig;
-        this.pendingQuizConfig = null;
-        return config;
+        return this.pendingQuizConfigs.shift() ?? null;
     }
 
     private async openQuizView(config: QuizSessionConfig): Promise<void> {
+        const slot = this.pendingQuizConfigs.length;
+        this.pendingQuizConfigs.push(config);
         try {
-            this.pendingQuizConfig = config;
             const leaf = this.app.workspace.getLeaf('tab');
             await leaf.setViewState({ type: QUIZ_VIEW_TYPE, active: true });
             void this.app.workspace.revealLeaf(leaf);
         } catch (error) {
-            this.pendingQuizConfig = null;
+            // Remove exactly the config this call pushed.
+            this.pendingQuizConfigs.splice(slot, 1);
             console.error('Omniscient: failed to open quiz view', error);
             new Notice('Could not open the quiz view. See the developer console for details.');
         }
@@ -239,22 +240,24 @@ export default class OmniscientPlugin extends Plugin {
     }
 
     private async pickQuizFile(): Promise<void> {
-        const files: TFile[] = [];
-        for (const file of this.app.vault.getMarkdownFiles()) {
-            try {
-                const content = await this.app.vault.cachedRead(file);
-                if (HAS_QUESTIONS_RE.test(content)) {
-                    files.push(file);
+        const files = this.app.vault.getMarkdownFiles();
+        const results = await Promise.all(
+            files.map(async (file) => {
+                try {
+                    const content = await this.app.vault.cachedRead(file);
+                    return HAS_QUESTIONS_RE.test(content) ? file : null;
+                } catch {
+                    // Skip files that cannot be read.
+                    return null;
                 }
-            } catch {
-                // Skip files that cannot be read.
-            }
-        }
-        if (files.length === 0) {
+            }),
+        );
+        const matches = results.filter((file): file is TFile => file !== null);
+        if (matches.length === 0) {
             new Notice('No quiz files found in the vault.');
             return;
         }
-        new QuizFilePicker(this.app, this, files).open();
+        new QuizFilePicker(this.app, this, matches).open();
     }
 
     // ------------------------------------------------------------------
@@ -263,13 +266,36 @@ export default class OmniscientPlugin extends Plugin {
 
     private async loadPersisted(): Promise<void> {
         const data = (await this.loadData()) as Partial<OmniscientSettings> | null;
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
-        if (!Array.isArray(this.settings.history)) {
-            this.settings.history = [];
-        } else {
-            // Never share the defaults array across reloads.
-            this.settings.history = [...this.settings.history];
-        }
+        this.settings = this.normalizeSettings(data ?? {});
+    }
+
+    /**
+     * Validates persisted settings field by field so a corrupted data.json
+     * (wrong types, missing keys) degrades to defaults instead of crashing
+     * or producing nonsense filters.
+     */
+    private normalizeSettings(raw: Partial<OmniscientSettings>): OmniscientSettings {
+        const difficultyLabels =
+            typeof raw.difficultyLabels === 'string' && raw.difficultyLabels.trim().length > 0
+                ? raw.difficultyLabels
+                : DEFAULT_SETTINGS.difficultyLabels;
+        const masteredPasses =
+            typeof raw.masteredPasses === 'number' &&
+            Number.isFinite(raw.masteredPasses) &&
+            raw.masteredPasses >= 1
+                ? Math.floor(raw.masteredPasses)
+                : DEFAULT_SETTINGS.masteredPasses;
+        const shuffleByDefault =
+            typeof raw.shuffleByDefault === 'boolean'
+                ? raw.shuffleByDefault
+                : DEFAULT_SETTINGS.shuffleByDefault;
+        const history = Array.isArray(raw.history) ? [...raw.history] : [];
+        return {
+            difficultyLabels,
+            masteredPasses,
+            shuffleByDefault,
+            history,
+        };
     }
 
     async recordSession(record: SessionRecord): Promise<void> {

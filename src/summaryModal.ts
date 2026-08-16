@@ -58,7 +58,6 @@ export class SummaryModal extends Modal {
         new Setting(contentEl).addButton((button) => {
             button.setButtonText('Done').onClick(() => {
                 this.close();
-                this.options.onDone();
             });
         });
 
@@ -77,5 +76,8 @@ export class SummaryModal extends Modal {
 
     onClose(): void {
         this.contentEl.empty();
+        // Clean up the quiz view regardless of how the modal was dismissed
+        // (Done button, Esc, or a review restart), not just via onDone.
+        this.options.onDone();
     }
 }

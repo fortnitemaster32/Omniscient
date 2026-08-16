@@ -87,6 +87,10 @@ export function splitTokens(
     difficultyLabels: string[],
 ): { stem: string; tokens: string[] } {
     const parts = rest.split('|').map((p) => p.trim());
+    // Drop empty trailing segments so "| Hard |" parses like "| Hard".
+    while (parts.length > 0 && parts[parts.length - 1] === '') {
+        parts.pop();
+    }
     const tokens: string[] = [];
     let end = parts.length - 1;
     while (
@@ -193,7 +197,7 @@ function extractMetadata(
             status = st;
             const m = STATUS_RE.exec(token.trim());
             const n = m?.[2] === undefined ? undefined : Number.parseInt(m[2], 10);
-            passes = st === 'Mastered' ? (n ?? 1) : 0;
+            passes = st === 'Mastered' ? (n !== undefined && n > 0 ? n : 1) : 0;
         } else if (st === null && difficulty === undefined) {
             const d = isDifficultyToken(token, difficultyLabels);
             if (d !== null) {
@@ -212,6 +216,7 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
     let current: QuestionBlock | null = null;
     let collectingQuestion = false;
     let body: string[] = [];
+    let inFence = false;
 
     const finalizeBody = () => {
         if (current === null) {
@@ -227,10 +232,22 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
     };
 
     for (let i = 0; i < lines.length; i++) {
+        const stripped = stripQuotePrefix(lines[i]);
+        if (current !== null && /^\s*```/.test(stripped)) {
+            inFence = !inFence;
+        }
+        if (inFence) {
+            // Question-like lines inside fenced code are body text, not
+            // delimiters.
+            if (current !== null) {
+                body.push(stripped);
+            }
+            continue;
+        }
         const header = parseHeader(lines[i], difficultyLabels);
         if (header === null) {
             if (current !== null) {
-                body.push(stripQuotePrefix(lines[i]));
+                body.push(stripped);
             }
             continue;
         }
@@ -240,7 +257,6 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
             }
             const meta = extractMetadata(header.tokens, difficultyLabels);
             current = {
-                id: `q${questions.length}-${lines[i].trim()}`,
                 headerIndex: i,
                 headerLine: lines[i],
                 stem: header.lineStem,
@@ -293,12 +309,21 @@ function bodyHashAt(
     difficultyLabels: string[],
 ): number {
     const body: string[] = [];
+    let inFence = false;
     for (let i = headerIdx + 1; i < lines.length; i++) {
+        const stripped = stripQuotePrefix(lines[i]);
+        if (/^\s*```/.test(stripped)) {
+            inFence = !inFence;
+        }
+        if (inFence) {
+            body.push(stripped);
+            continue;
+        }
         const h = parseHeader(lines[i], difficultyLabels);
         if (h !== null) {
             break;
         }
-        body.push(stripQuotePrefix(lines[i]));
+        body.push(stripped);
     }
     return hashString(assembleBody(body));
 }
@@ -320,6 +345,11 @@ export function patchQuestionHeader(
     const eol: '\n' | '\r\n' = content.includes('\r\n') ? '\r\n' : '\n';
     const lines = content.split(/\r?\n/);
     const needle = block.headerLine.trim();
+    // Find the best match: exact header text plus body hash, preferring the
+    // candidate closest to the block's original position so that identical
+    // duplicate questions patch the right one.
+    let best: number | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
     for (let i = 0; i < lines.length; i++) {
         if (lines[i].trim() !== needle) {
             continue;
@@ -327,8 +357,15 @@ export function patchQuestionHeader(
         if (bodyHashAt(lines, i, difficultyLabels) !== block.bodyHash) {
             continue;
         }
-        lines[i] = newLine;
-        return lines.join(eol);
+        const distance = Math.abs(i - block.headerIndex);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = i;
+        }
     }
-    return content;
+    if (best === null) {
+        return content;
+    }
+    lines[best] = newLine;
+    return lines.join(eol);
 }

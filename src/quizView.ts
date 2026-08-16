@@ -18,6 +18,7 @@ export class QuizView extends ItemView {
     private session: QuizSession | null = null;
     private revealed = false;
     private finished = false;
+    private viewClosed = false;
     private failedWrites = 0;
     private writeQueue: Promise<void> = Promise.resolve();
 
@@ -107,7 +108,7 @@ export class QuizView extends ItemView {
             this.handleKeydown(event),
         );
         this.renderQuestion();
-        this.containerEl.focus();
+        this.contentEl.focus();
     }
 
     onClose(): Promise<void> {
@@ -135,6 +136,7 @@ export class QuizView extends ItemView {
         });
         header.createDiv({ cls: 'omniscient-quiz-spacer' });
         this.progressTextEl = header.createDiv({ cls: 'omniscient-progress-text' });
+        this.progressTextEl.setAttribute('aria-live', 'polite');
         const undoButton = header.createEl('button', {
             cls: 'clickable-icon',
             attr: { 'aria-label': 'Undo last grade', 'data-tooltip-position': 'top' },
@@ -147,7 +149,7 @@ export class QuizView extends ItemView {
             attr: { 'aria-label': 'End session', 'data-tooltip-position': 'top' },
         });
         endButton.setText('End session');
-        endButton.addEventListener('click', () => this.endSession());
+        endButton.addEventListener('click', () => void this.endSession());
 
         const bar = contentEl.createDiv({ cls: 'omniscient-progress-bar' });
         this.progressFillEl = bar.createDiv({ cls: 'omniscient-progress-bar-fill' });
@@ -252,7 +254,7 @@ export class QuizView extends ItemView {
         }
 
         this.updateProgress();
-        this.containerEl.focus();
+        this.contentEl.focus();
     }
 
     private updateProgress(): void {
@@ -309,7 +311,7 @@ export class QuizView extends ItemView {
         }
         if (event.key === 'Escape') {
             event.preventDefault();
-            this.endSession();
+            void this.endSession();
         }
     }
 
@@ -355,7 +357,7 @@ export class QuizView extends ItemView {
         this.enqueueWrite(graded.block);
         this.updateProgress();
         if (session.isComplete) {
-            this.endSession();
+            void this.endSession();
             return;
         }
         this.revealed = false;
@@ -378,6 +380,9 @@ export class QuizView extends ItemView {
                 await this.app.vault.process(abstract, (content) =>
                     patchQuestionHeader(content, block, newLine, labels),
                 );
+                // Keep the locator in sync so later writes (e.g. after an
+                // undo) still find the header.
+                block.headerLine = newLine;
             } catch (error) {
                 console.error('Omniscient: failed to save question status', error);
                 this.failedWrites++;
@@ -385,22 +390,33 @@ export class QuizView extends ItemView {
         });
     }
 
-    private endSession(): void {
+    private async endSession(): Promise<void> {
         const session = this.session;
         if (session === null || this.finished) {
             return;
         }
         this.finished = true;
+        // Let any still-queued status writes finish before recording and
+        // reporting, so the summary's numbers and the file agree.
+        try {
+            await this.writeQueue;
+        } catch {
+            // Already logged by the queue tasks.
+        }
         const counts = session.counts;
-        void this.plugin.recordSession({
-            date: new Date().toISOString(),
-            filePath: this.config?.filePaths.join(', ') ?? '',
-            total: session.total,
-            answered: counts.answered,
-            mastered: counts.mastered,
-            almost: counts.almost,
-            struggling: counts.struggling,
-        });
+        void this.plugin
+            .recordSession({
+                date: new Date().toISOString(),
+                filePath: this.config?.filePaths.join(', ') ?? '',
+                total: session.total,
+                answered: counts.answered,
+                mastered: counts.mastered,
+                almost: counts.almost,
+                struggling: counts.struggling,
+            })
+            .catch((error) => {
+                console.error('Omniscient: failed to record session', error);
+            });
         const filePaths = this.config?.filePaths;
         new SummaryModal(this.app, {
             fileBasename: this.displayName(),
@@ -408,7 +424,10 @@ export class QuizView extends ItemView {
             total: session.total,
             failedWrites: this.failedWrites,
             onDone: () => {
-                this.leaf.detach();
+                if (!this.viewClosed) {
+                    this.viewClosed = true;
+                    this.leaf.detach();
+                }
             },
             onReviewStruggling: () => {
                 if (filePaths) {

@@ -14,8 +14,6 @@ export type StatusFilter =
 
 /** A single question/answer pair parsed from a markdown file. */
 export interface QuestionBlock {
-    /** Stable id derived from the question body. */
-    id: string;
     /** 0-based line index of the question header in the parsed content. */
     headerIndex: number;
     /** Full original text of the header line (used for write-back lookup). */

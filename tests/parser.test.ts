@@ -73,7 +73,6 @@ function test(name: string, fn: () => void): void {
 
 function makeBlock(overrides: Partial<QuestionBlock>): QuestionBlock {
     return {
-        id: 'x',
         headerIndex: 0,
         headerLine: '> Question',
         stem: '> Question',
@@ -345,6 +344,83 @@ test('patchQuestionHeader preserves CRLF', () => {
         LABELS,
     );
     eq(patched, '> Question | Hard | Mastered(1)\r\nbody\r\n> Answer\r\nans');
+});
+
+test('patch follows an updated header line (grade, undo, regrade)', () => {
+    const content = '> Question | Hard\nbody\n> Answer\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    const block = questions[0];
+    const gradeLine = serializeHeader(block.stem, 'Hard', 'Struggling', 0);
+    let patched = patchQuestionHeader(content, block, gradeLine, LABELS);
+    block.headerLine = gradeLine;
+    const undoLine = serializeHeader(block.stem, 'Hard', undefined, 0);
+    patched = patchQuestionHeader(patched, block, undoLine, LABELS);
+    block.headerLine = undoLine;
+    const regradeLine = serializeHeader(block.stem, 'Hard', 'Mastered', 1);
+    patched = patchQuestionHeader(patched, block, regradeLine, LABELS);
+    eq(patched, '> Question | Hard | Mastered(1)\nbody\n> Answer\nans');
+});
+
+test('identical duplicate questions patch the right one', () => {
+    const content = [
+        '> Question',
+        'same body',
+        '> Answer',
+        'a',
+        '',
+        '> Question',
+        'same body',
+        '> Answer',
+        'b',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 2);
+    const patched = patchQuestionHeader(
+        content,
+        questions[1],
+        '> Question | Mastered(1)',
+        LABELS,
+    );
+    const lines = patched.split('\n');
+    eq(lines[0], '> Question');
+    eq(lines[5], '> Question | Mastered(1)');
+});
+
+test('question-like lines inside code fences are body text', () => {
+    const content = [
+        '> Question | Hard',
+        '> ```markdown',
+        '> > Question',
+        '> > [!answer]',
+        '> ```',
+        '> Answer',
+        'the answer',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 1);
+    eq(questions[0]?.questionBody, '```markdown\n> Question\n> [!answer]\n```');
+    eq(questions[0]?.answerBody, 'the answer');
+    // The block is still patchable despite the fenced look-alike header.
+    const patched = patchQuestionHeader(
+        content,
+        questions[0],
+        '> Question | Hard | Mastered(1)',
+        LABELS,
+    );
+    eq(patched.split('\n')[0], '> Question | Hard | Mastered(1)');
+});
+
+test('trailing pipe metadata parses cleanly', () => {
+    const h = parseHeader('> Question | Hard |', LABELS);
+    eq(h?.lineStem, '> Question');
+    eq(h?.tokens, ['Hard']);
+    eq(serializeHeader('> Question', 'Hard', 'Mastered', 1), '> Question | Hard | Mastered(1)');
+});
+
+test('mastered(0) counts as one pass', () => {
+    const { questions } = parseQuestions('> Question | Mastered(0)\nbody\n> Answer\nans', LABELS);
+    eq(questions[0]?.status, 'Mastered');
+    eq(questions[0]?.passes, 1);
 });
 
 test('patchQuestionHeader is a no-op when the header changed', () => {

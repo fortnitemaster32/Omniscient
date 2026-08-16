@@ -93,6 +93,9 @@ function isDifficultyToken(token, labels) {
 }
 function splitTokens(rest, difficultyLabels) {
   const parts = rest.split("|").map((p) => p.trim());
+  while (parts.length > 0 && parts[parts.length - 1] === "") {
+    parts.pop();
+  }
   const tokens = [];
   let end = parts.length - 1;
   while (end >= 0 && (isStatusToken(parts[end]) !== null || isDifficultyToken(parts[end], difficultyLabels) !== null)) {
@@ -166,7 +169,7 @@ function extractMetadata(tokens, difficultyLabels) {
       status = st;
       const m = STATUS_RE.exec(token.trim());
       const n = (m == null ? void 0 : m[2]) === void 0 ? void 0 : Number.parseInt(m[2], 10);
-      passes = st === "Mastered" ? n != null ? n : 1 : 0;
+      passes = st === "Mastered" ? n !== void 0 && n > 0 ? n : 1 : 0;
     } else if (st === null && difficulty === void 0) {
       const d = isDifficultyToken(token, difficultyLabels);
       if (d !== null) {
@@ -183,6 +186,7 @@ function parseQuestions(content, difficultyLabels) {
   let current = null;
   let collectingQuestion = false;
   let body = [];
+  let inFence = false;
   const finalizeBody = () => {
     if (current === null) {
       return;
@@ -196,10 +200,20 @@ function parseQuestions(content, difficultyLabels) {
     }
   };
   for (let i = 0; i < lines.length; i++) {
+    const stripped = stripQuotePrefix(lines[i]);
+    if (current !== null && /^\s*```/.test(stripped)) {
+      inFence = !inFence;
+    }
+    if (inFence) {
+      if (current !== null) {
+        body.push(stripped);
+      }
+      continue;
+    }
     const header = parseHeader(lines[i], difficultyLabels);
     if (header === null) {
       if (current !== null) {
-        body.push(stripQuotePrefix(lines[i]));
+        body.push(stripped);
       }
       continue;
     }
@@ -209,7 +223,6 @@ function parseQuestions(content, difficultyLabels) {
       }
       const meta = extractMetadata(header.tokens, difficultyLabels);
       current = {
-        id: `q${questions.length}-${lines[i].trim()}`,
         headerIndex: i,
         headerLine: lines[i],
         stem: header.lineStem,
@@ -249,12 +262,21 @@ function serializeHeader(lineStem, difficulty, status, passes) {
 }
 function bodyHashAt(lines, headerIdx, difficultyLabels) {
   const body = [];
+  let inFence = false;
   for (let i = headerIdx + 1; i < lines.length; i++) {
+    const stripped = stripQuotePrefix(lines[i]);
+    if (/^\s*```/.test(stripped)) {
+      inFence = !inFence;
+    }
+    if (inFence) {
+      body.push(stripped);
+      continue;
+    }
     const h = parseHeader(lines[i], difficultyLabels);
     if (h !== null) {
       break;
     }
-    body.push(stripQuotePrefix(lines[i]));
+    body.push(stripped);
   }
   return hashString(assembleBody(body));
 }
@@ -262,6 +284,8 @@ function patchQuestionHeader(content, block, newLine, difficultyLabels) {
   const eol = content.includes("\r\n") ? "\r\n" : "\n";
   const lines = content.split(/\r?\n/);
   const needle = block.headerLine.trim();
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() !== needle) {
       continue;
@@ -269,10 +293,17 @@ function patchQuestionHeader(content, block, newLine, difficultyLabels) {
     if (bodyHashAt(lines, i, difficultyLabels) !== block.bodyHash) {
       continue;
     }
-    lines[i] = newLine;
-    return lines.join(eol);
+    const distance = Math.abs(i - block.headerIndex);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = i;
+    }
   }
-  return content;
+  if (best === null) {
+    return content;
+  }
+  lines[best] = newLine;
+  return lines.join(eol);
 }
 
 // src/progressModal.ts
@@ -510,7 +541,6 @@ var SummaryModal = class extends import_obsidian4.Modal {
     new import_obsidian4.Setting(contentEl).addButton((button) => {
       button.setButtonText("Done").onClick(() => {
         this.close();
-        this.options.onDone();
       });
     });
     if (counts.struggling > 0) {
@@ -524,6 +554,7 @@ var SummaryModal = class extends import_obsidian4.Modal {
   }
   onClose() {
     this.contentEl.empty();
+    this.options.onDone();
   }
 };
 
@@ -537,6 +568,7 @@ var QuizView = class extends import_obsidian5.ItemView {
     this.session = null;
     this.revealed = false;
     this.finished = false;
+    this.viewClosed = false;
     this.failedWrites = 0;
     this.writeQueue = Promise.resolve();
     // ------------------------------------------------------------------
@@ -621,7 +653,7 @@ var QuizView = class extends import_obsidian5.ItemView {
       (event) => this.handleKeydown(event)
     );
     this.renderQuestion();
-    this.containerEl.focus();
+    this.contentEl.focus();
   }
   onClose() {
     return Promise.resolve();
@@ -645,6 +677,7 @@ var QuizView = class extends import_obsidian5.ItemView {
     });
     header.createDiv({ cls: "omniscient-quiz-spacer" });
     this.progressTextEl = header.createDiv({ cls: "omniscient-progress-text" });
+    this.progressTextEl.setAttribute("aria-live", "polite");
     const undoButton = header.createEl("button", {
       cls: "clickable-icon",
       attr: { "aria-label": "Undo last grade", "data-tooltip-position": "top" }
@@ -657,7 +690,7 @@ var QuizView = class extends import_obsidian5.ItemView {
       attr: { "aria-label": "End session", "data-tooltip-position": "top" }
     });
     endButton.setText("End session");
-    endButton.addEventListener("click", () => this.endSession());
+    endButton.addEventListener("click", () => void this.endSession());
     const bar = contentEl.createDiv({ cls: "omniscient-progress-bar" });
     this.progressFillEl = bar.createDiv({ cls: "omniscient-progress-bar-fill" });
     this.contentArea = contentEl.createDiv({ cls: "omniscient-content" });
@@ -748,7 +781,7 @@ var QuizView = class extends import_obsidian5.ItemView {
       skip.addEventListener("click", () => this.skip());
     }
     this.updateProgress();
-    this.containerEl.focus();
+    this.contentEl.focus();
   }
   updateProgress() {
     const session = this.session;
@@ -802,7 +835,7 @@ var QuizView = class extends import_obsidian5.ItemView {
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      this.endSession();
+      void this.endSession();
     }
   }
   reveal() {
@@ -843,7 +876,7 @@ var QuizView = class extends import_obsidian5.ItemView {
     this.enqueueWrite(graded.block);
     this.updateProgress();
     if (session.isComplete) {
-      this.endSession();
+      void this.endSession();
       return;
     }
     this.revealed = false;
@@ -867,19 +900,24 @@ var QuizView = class extends import_obsidian5.ItemView {
           abstract,
           (content) => patchQuestionHeader(content, block, newLine, labels)
         );
+        block.headerLine = newLine;
       } catch (error) {
         console.error("Omniscient: failed to save question status", error);
         this.failedWrites++;
       }
     });
   }
-  endSession() {
+  async endSession() {
     var _a, _b, _c;
     const session = this.session;
     if (session === null || this.finished) {
       return;
     }
     this.finished = true;
+    try {
+      await this.writeQueue;
+    } catch (e) {
+    }
     const counts = session.counts;
     void this.plugin.recordSession({
       date: (/* @__PURE__ */ new Date()).toISOString(),
@@ -889,6 +927,8 @@ var QuizView = class extends import_obsidian5.ItemView {
       mastered: counts.mastered,
       almost: counts.almost,
       struggling: counts.struggling
+    }).catch((error) => {
+      console.error("Omniscient: failed to record session", error);
     });
     const filePaths = (_c = this.config) == null ? void 0 : _c.filePaths;
     new SummaryModal(this.app, {
@@ -897,7 +937,10 @@ var QuizView = class extends import_obsidian5.ItemView {
       total: session.total,
       failedWrites: this.failedWrites,
       onDone: () => {
-        this.leaf.detach();
+        if (!this.viewClosed) {
+          this.viewClosed = true;
+          this.leaf.detach();
+        }
       },
       onReviewStruggling: () => {
         if (filePaths) {
@@ -1123,11 +1166,12 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     super(...arguments);
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
     /**
-     * Config handed to the next quiz view that opens. View state is only
-     * available after onOpen() in Obsidian, so the config is passed through
-     * the plugin instead of view state.
+     * Configs handed to quiz views that are about to open. View state is
+     * only available after onOpen() in Obsidian, so configs are passed
+     * through the plugin instead of view state. A queue (not a single slot)
+     * keeps concurrent opens from clobbering each other.
      */
-    this.pendingQuizConfig = null;
+    this.pendingQuizConfigs = [];
   }
   async onload() {
     try {
@@ -1205,7 +1249,7 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
   }
   /** Starts a quiz over every markdown file inside a folder tree. */
   async startFolderQuizFlow(folder) {
-    const prefix = `${folder.path}/`;
+    const prefix = folder.path === "/" ? "" : `${folder.path}/`;
     const paths = this.app.vault.getMarkdownFiles().filter((file) => file.path.startsWith(prefix)).map((file) => file.path);
     if (paths.length === 0) {
       new import_obsidian8.Notice("No Markdown files in this folder.");
@@ -1273,22 +1317,22 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     ).open();
   }
   /**
-   * Returns the config for a quiz view that is about to open, and clears
-   * the slot. Returns null when the view is restored from a saved layout.
+   * Returns the config for a quiz view that is about to open, in FIFO
+   * order. Returns null when the view is restored from a saved layout.
    */
   consumePendingQuizConfig() {
-    const config = this.pendingQuizConfig;
-    this.pendingQuizConfig = null;
-    return config;
+    var _a;
+    return (_a = this.pendingQuizConfigs.shift()) != null ? _a : null;
   }
   async openQuizView(config) {
+    const slot = this.pendingQuizConfigs.length;
+    this.pendingQuizConfigs.push(config);
     try {
-      this.pendingQuizConfig = config;
       const leaf = this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: QUIZ_VIEW_TYPE, active: true });
       void this.app.workspace.revealLeaf(leaf);
     } catch (error) {
-      this.pendingQuizConfig = null;
+      this.pendingQuizConfigs.splice(slot, 1);
       console.error("Omniscient: failed to open quiz view", error);
       new import_obsidian8.Notice("Could not open the quiz view. See the developer console for details.");
     }
@@ -1322,33 +1366,47 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     return true;
   }
   async pickQuizFile() {
-    const files = [];
-    for (const file of this.app.vault.getMarkdownFiles()) {
-      try {
-        const content = await this.app.vault.cachedRead(file);
-        if (HAS_QUESTIONS_RE.test(content)) {
-          files.push(file);
+    const files = this.app.vault.getMarkdownFiles();
+    const results = await Promise.all(
+      files.map(async (file) => {
+        try {
+          const content = await this.app.vault.cachedRead(file);
+          return HAS_QUESTIONS_RE.test(content) ? file : null;
+        } catch (e) {
+          return null;
         }
-      } catch (e) {
-      }
-    }
-    if (files.length === 0) {
+      })
+    );
+    const matches = results.filter((file) => file !== null);
+    if (matches.length === 0) {
       new import_obsidian8.Notice("No quiz files found in the vault.");
       return;
     }
-    new QuizFilePicker(this.app, this, files).open();
+    new QuizFilePicker(this.app, this, matches).open();
   }
   // ------------------------------------------------------------------
   // Persistence
   // ------------------------------------------------------------------
   async loadPersisted() {
     const data = await this.loadData();
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data != null ? data : {});
-    if (!Array.isArray(this.settings.history)) {
-      this.settings.history = [];
-    } else {
-      this.settings.history = [...this.settings.history];
-    }
+    this.settings = this.normalizeSettings(data != null ? data : {});
+  }
+  /**
+   * Validates persisted settings field by field so a corrupted data.json
+   * (wrong types, missing keys) degrades to defaults instead of crashing
+   * or producing nonsense filters.
+   */
+  normalizeSettings(raw) {
+    const difficultyLabels = typeof raw.difficultyLabels === "string" && raw.difficultyLabels.trim().length > 0 ? raw.difficultyLabels : DEFAULT_SETTINGS.difficultyLabels;
+    const masteredPasses = typeof raw.masteredPasses === "number" && Number.isFinite(raw.masteredPasses) && raw.masteredPasses >= 1 ? Math.floor(raw.masteredPasses) : DEFAULT_SETTINGS.masteredPasses;
+    const shuffleByDefault = typeof raw.shuffleByDefault === "boolean" ? raw.shuffleByDefault : DEFAULT_SETTINGS.shuffleByDefault;
+    const history = Array.isArray(raw.history) ? [...raw.history] : [];
+    return {
+      difficultyLabels,
+      masteredPasses,
+      shuffleByDefault,
+      history
+    };
   }
   async recordSession(record) {
     this.settings.history.unshift(record);
