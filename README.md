@@ -10,6 +10,10 @@ Keep all of your practice questions for a subject in one markdown file (or a fol
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
+## Installing
+
+Once listed, Omniscient installs from the community plugin browser. For a manual install, download `omniscient-<version>.zip` from the latest release, extract it, and copy the `omniscient` folder into `<your vault>/.obsidian/plugins/`. Then enable the plugin in Settings → Community plugins and reload Obsidian.
+
 ## How it works
 
 The quiz-and-recall method works like this: answer from memory (never passively re-read), mark what you missed, review only those, and repeat until you complete a pass with no mistakes. Omniscient encodes exactly that loop:

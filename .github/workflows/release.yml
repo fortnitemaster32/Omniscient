@@ -47,6 +47,14 @@ jobs:
           # explicitly so a non-fast-forward rejection is impossible.
           git push origin HEAD:main
 
+      - name: Package plugin folder
+        # One-zip manual install: extract and copy the omniscient folder
+        # straight into <vault>/.obsidian/plugins/.
+        run: |
+          mkdir -p omniscient
+          cp main.js manifest.json styles.css omniscient/
+          zip -r omniscient-${{ github.ref_name }}.zip omniscient
+
       - name: Attach build provenance
         # Artifact attestation is only supported on public repositories.
         # It activates automatically once the repo is made public.
@@ -66,3 +74,4 @@ jobs:
             manifest.json
             styles.css
             versions.json
+            omniscient-${{ github.ref_name }}.zip
