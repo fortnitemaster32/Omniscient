@@ -32,13 +32,10 @@ jobs:
       - name: Build, lint, and test
         run: npm run check
 
-      - name: Update versions.json on main
-        # The tag checkout is detached and may sit behind main, so update
-        # versions.json on a branch based on origin/main and fast-forward
-        # main with it. A missing change is a no-op commit and a no-op push.
+      - name: Add release entry to versions.json
+        # Write the new mapping into the working tree only; it becomes the
+        # release asset below. The commit to main happens after publishing.
         run: |
-          git fetch origin main
-          git checkout -B release-update origin/main
           node -e "
             const fs = require('fs');
             const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
@@ -46,11 +43,6 @@ jobs:
             versions[manifest.version] = manifest.minAppVersion;
             fs.writeFileSync('versions.json', JSON.stringify(versions, null, 2) + '\n');
           "
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add versions.json
-          git commit -m 'Update versions.json for release' || true
-          git push origin release-update:main
 
       - name: Package plugin folder
         # One-zip manual install: extract and copy the omniscient folder
@@ -72,6 +64,9 @@ jobs:
             styles.css
 
       - name: Create release
+        # Assets are packaged from the tag checkout above. The versions.json
+        # update on main happens afterwards so it can never change what the
+        # release ships.
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -80,3 +75,23 @@ jobs:
             styles.css
             versions.json
             omniscient-${{ github.ref_name }}.zip
+
+      - name: Commit versions.json update on main
+        # The tag checkout is detached and may sit behind main, so update
+        # versions.json on a branch based on origin/main and fast-forward
+        # main with it. A missing change is a no-op commit and a no-op push.
+        run: |
+          git fetch origin main
+          git checkout -B release-update origin/main
+          node -e "
+            const fs = require('fs');
+            const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+            const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8'));
+            versions[manifest.version] = manifest.minAppVersion;
+            fs.writeFileSync('versions.json', JSON.stringify(versions, null, 2) + '\n');
+          "
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add versions.json
+          git commit -m 'Update versions.json for release' || true
+          git push origin release-update:main

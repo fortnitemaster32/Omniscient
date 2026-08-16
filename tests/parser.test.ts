@@ -398,6 +398,68 @@ test('identical duplicate questions patch the right one', () => {
     eq(lines[5], '> Question | Mastered(1)');
 });
 
+test('fences before the first question are not quiz delimiters', () => {
+    const content = [
+        '> ```',
+        '> > Question | Hard',
+        '> > [!answer]',
+        '> ```',
+        '> Question',
+        'real body',
+        '> Answer',
+        'real answer',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 1);
+    eq(questions[0]?.questionBody, 'real body');
+    eq(questions[0]?.answerBody, 'real answer');
+});
+
+test('tilde fences are respected like backtick fences', () => {
+    const content = [
+        '> ~~~',
+        '> > Question | Hard',
+        '> ~~~',
+        '> Question',
+        'real body',
+        '> Answer',
+        'real answer',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 1);
+    eq(questions[0]?.questionBody, 'real body');
+});
+
+test('unclosed leading fence swallows everything until EOF', () => {
+    const content = [
+        '> ```',
+        '> > Question | Hard',
+        '> > [!answer]',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 0);
+});
+
+test('tilde-fenced bodies patch correctly', () => {
+    const content = [
+        '> Question | Hard',
+        '> ~~~',
+        '> > Question',
+        '> ~~~',
+        '> Answer',
+        'the answer',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 1);
+    const patched = patch(
+        content,
+        questions[0],
+        '> Question | Hard | Mastered(1)',
+        LABELS,
+    );
+    eq(patched.split('\n')[0], '> Question | Hard | Mastered(1)');
+});
+
 test('question-like lines inside code fences are body text', () => {
     const content = [
         '> Question | Hard',

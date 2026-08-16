@@ -4,6 +4,8 @@ All notable changes to Omniscient are documented here. The format is based on [K
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-16
+
 ### Changed
 
 - Release workflow packages a single-folder zip (`omniscient-<version>.zip`) for manual installs
@@ -15,6 +17,14 @@ All notable changes to Omniscient are documented here. The format is based on [K
 - Callout types like `[!questionable]` or `[!success-story]` are no longer mistaken for quiz headers
 - Grades lost to mid-session edits are now counted in the summary instead of failing silently
 - Corrupt session history entries in `data.json` no longer crash the settings tab
+- Fenced code blocks (` ``` ` and ` ~~~ `) anywhere in a file are never treated as quiz content, even before the first question
+- Concurrent quiz opens can no longer leave a stale config behind after a failed view open
+- Settings writes are serialized so simultaneous sessions cannot interleave saves
+- File selection scans the vault with bounded concurrency instead of reading every Markdown file at once
+
+### Security
+
+- Release assets are packaged from the tagged commit; the versions.json update on main happens only after publishing
 
 ## [0.1.0] - 2026-08-16
 

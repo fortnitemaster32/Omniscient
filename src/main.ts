@@ -25,6 +25,8 @@ export default class OmniscientPlugin extends Plugin {
      * keeps concurrent opens from clobbering each other.
      */
     private pendingQuizConfigs: QuizSessionConfig[] = [];
+    /** Serializes settings writes so concurrent saves cannot interleave. */
+    private saveQueue: Promise<void> = Promise.resolve();
 
     async onload(): Promise<void> {
         try {
@@ -195,15 +197,19 @@ export default class OmniscientPlugin extends Plugin {
     }
 
     private async openQuizView(config: QuizSessionConfig): Promise<void> {
-        const slot = this.pendingQuizConfigs.length;
         this.pendingQuizConfigs.push(config);
         try {
             const leaf = this.app.workspace.getLeaf('tab');
             await leaf.setViewState({ type: QUIZ_VIEW_TYPE, active: true });
             void this.app.workspace.revealLeaf(leaf);
         } catch (error) {
-            // Remove exactly the config this call pushed.
-            this.pendingQuizConfigs.splice(slot, 1);
+            // Remove exactly the config this call pushed. Index-based
+            // removal is unsafe here: another view may have consumed an
+            // earlier entry (shift) while this one was opening.
+            const slot = this.pendingQuizConfigs.indexOf(config);
+            if (slot !== -1) {
+                this.pendingQuizConfigs.splice(slot, 1);
+            }
             console.error('Omniscient: failed to open quiz view', error);
             new Notice('Could not open the quiz view. See the developer console for details.');
         }
@@ -300,14 +306,25 @@ export default class OmniscientPlugin extends Plugin {
         };
     }
 
-    async recordSession(record: SessionRecord): Promise<void> {        this.settings.history.unshift(record);
+    async recordSession(record: SessionRecord): Promise<void> {
+        this.settings.history.unshift(record);
         this.settings.history = this.settings.history.slice(0, 100);
-        await this.saveData(this.settings);
+        await this.persistSettings();
     }
 
     async clearHistory(): Promise<void> {
         this.settings.history = [];
-        await this.saveData(this.settings);
+        await this.persistSettings();
+    }
+
+    /**
+     * Serializes settings writes through one promise chain so concurrent
+     * sessions (or a session finishing while history is cleared) cannot
+     * interleave saves and leave data.json in the wrong state.
+     */
+    private persistSettings(): Promise<void> {
+        this.saveQueue = this.saveQueue.then(() => this.saveData(this.settings));
+        return this.saveQueue;
     }
 }
 

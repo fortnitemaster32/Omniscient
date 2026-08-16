@@ -216,6 +216,9 @@ function extractMetadata(
     return { difficulty, status, passes };
 }
 
+/** Matches a CommonMark code fence opener/closer (0-3 spaces indent). */
+const FENCE_RE = /^ {0,3}(```|~~~)/;
+
 /** Parses a full file into question blocks. */
 export function parseQuestions(content: string, difficultyLabels: string[]): ParsedFile {
     const eol: '\n' | '\r\n' = content.includes('\r\n') ? '\r\n' : '\n';
@@ -241,12 +244,13 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
 
     for (let i = 0; i < lines.length; i++) {
         const stripped = stripQuotePrefix(lines[i]);
-        if (current !== null && /^\s*```/.test(stripped)) {
+        // Toggle fence mode on every line, before any header parsing: a
+        // fenced code block anywhere in the file (even before the first
+        // question) is body text, never a quiz delimiter.
+        if (FENCE_RE.test(stripped)) {
             inFence = !inFence;
         }
         if (inFence) {
-            // Question-like lines inside fenced code are body text, not
-            // delimiters.
             if (current !== null) {
                 body.push(stripped);
             }
@@ -320,7 +324,9 @@ function bodyHashAt(
     let inFence = false;
     for (let i = headerIdx + 1; i < lines.length; i++) {
         const stripped = stripQuotePrefix(lines[i]);
-        if (/^\s*```/.test(stripped)) {
+        // Mirror parseQuestions: fences toggle anywhere and apply to both
+        // ``` and ~~~ so the body hash stays consistent with parsing.
+        if (FENCE_RE.test(stripped)) {
             inFence = !inFence;
         }
         if (inFence) {

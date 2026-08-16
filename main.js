@@ -179,6 +179,7 @@ function extractMetadata(tokens, difficultyLabels) {
   }
   return { difficulty, status, passes };
 }
+var FENCE_RE = /^ {0,3}(```|~~~)/;
 function parseQuestions(content, difficultyLabels) {
   const eol = content.includes("\r\n") ? "\r\n" : "\n";
   const lines = content.split(/\r?\n/);
@@ -201,7 +202,7 @@ function parseQuestions(content, difficultyLabels) {
   };
   for (let i = 0; i < lines.length; i++) {
     const stripped = stripQuotePrefix(lines[i]);
-    if (current !== null && /^\s*```/.test(stripped)) {
+    if (FENCE_RE.test(stripped)) {
       inFence = !inFence;
     }
     if (inFence) {
@@ -265,7 +266,7 @@ function bodyHashAt(lines, headerIdx, difficultyLabels) {
   let inFence = false;
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const stripped = stripQuotePrefix(lines[i]);
-    if (/^\s*```/.test(stripped)) {
+    if (FENCE_RE.test(stripped)) {
       inFence = !inFence;
     }
     if (inFence) {
@@ -1176,6 +1177,8 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
      * keeps concurrent opens from clobbering each other.
      */
     this.pendingQuizConfigs = [];
+    /** Serializes settings writes so concurrent saves cannot interleave. */
+    this.saveQueue = Promise.resolve();
   }
   async onload() {
     try {
@@ -1329,14 +1332,16 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     return (_a = this.pendingQuizConfigs.shift()) != null ? _a : null;
   }
   async openQuizView(config) {
-    const slot = this.pendingQuizConfigs.length;
     this.pendingQuizConfigs.push(config);
     try {
       const leaf = this.app.workspace.getLeaf("tab");
       await leaf.setViewState({ type: QUIZ_VIEW_TYPE, active: true });
       void this.app.workspace.revealLeaf(leaf);
     } catch (error) {
-      this.pendingQuizConfigs.splice(slot, 1);
+      const slot = this.pendingQuizConfigs.indexOf(config);
+      if (slot !== -1) {
+        this.pendingQuizConfigs.splice(slot, 1);
+      }
       console.error("Omniscient: failed to open quiz view", error);
       new import_obsidian8.Notice("Could not open the quiz view. See the developer console for details.");
     }
@@ -1415,11 +1420,20 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
   async recordSession(record) {
     this.settings.history.unshift(record);
     this.settings.history = this.settings.history.slice(0, 100);
-    await this.saveData(this.settings);
+    await this.persistSettings();
   }
   async clearHistory() {
     this.settings.history = [];
-    await this.saveData(this.settings);
+    await this.persistSettings();
+  }
+  /**
+   * Serializes settings writes through one promise chain so concurrent
+   * sessions (or a session finishing while history is cleared) cannot
+   * interleave saves and leave data.json in the wrong state.
+   */
+  persistSettings() {
+    this.saveQueue = this.saveQueue.then(() => this.saveData(this.settings));
+    return this.saveQueue;
   }
 };
 function isValidSessionRecord(entry) {
