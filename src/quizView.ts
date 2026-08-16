@@ -13,10 +13,6 @@ import type { GradeKind, QuestionBlock, QuizSessionConfig } from './types';
 
 export const QUIZ_VIEW_TYPE = 'omniscient-quiz-view';
 
-interface QuizViewState {
-    config?: QuizSessionConfig;
-}
-
 function formatTime(total: number): string {
     const m = Math.floor(total / 60);
     const s = Math.floor(total % 60);
@@ -65,9 +61,9 @@ export class QuizView extends ItemView {
     }
 
     private async setup(): Promise<void> {
-        const state = this.getState() as QuizViewState | null;
-        const config = state?.config;
+        const config = this.plugin.consumePendingQuizConfig();
         if (!config) {
+            // View restored from a saved workspace layout: nothing to run.
             this.leaf.detach();
             return;
         }

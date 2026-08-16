@@ -469,8 +469,7 @@ var QuizView = class extends import_obsidian3.ItemView {
   }
   async setup() {
     var _a;
-    const state = this.getState();
-    const config = state == null ? void 0 : state.config;
+    const config = this.plugin.consumePendingQuizConfig();
     if (!config) {
       this.leaf.detach();
       return;
@@ -1001,6 +1000,12 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
+    /**
+     * Config handed to the next quiz view that opens. View state is only
+     * available after onOpen() in Obsidian, so the config is passed through
+     * the plugin instead of view state.
+     */
+    this.pendingQuizConfig = null;
   }
   async onload() {
     try {
@@ -1104,16 +1109,23 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
       }
     ).open();
   }
+  /**
+   * Returns the config for a quiz view that is about to open, and clears
+   * the slot. Returns null when the view is restored from a saved layout.
+   */
+  consumePendingQuizConfig() {
+    const config = this.pendingQuizConfig;
+    this.pendingQuizConfig = null;
+    return config;
+  }
   async openQuizView(file, config) {
     try {
+      this.pendingQuizConfig = Object.assign({}, config, { filePath: file.path });
       const leaf = this.app.workspace.getLeaf("tab");
-      await leaf.setViewState({
-        type: QUIZ_VIEW_TYPE,
-        active: true,
-        state: { config: Object.assign({}, config, { filePath: file.path }) }
-      });
+      await leaf.setViewState({ type: QUIZ_VIEW_TYPE, active: true });
       void this.app.workspace.revealLeaf(leaf);
     } catch (error) {
+      this.pendingQuizConfig = null;
       console.error("Omniscient: failed to open quiz view", error);
       new import_obsidian6.Notice("Could not open the quiz view. See the developer console for details.");
     }

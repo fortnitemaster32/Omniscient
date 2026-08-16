@@ -15,6 +15,12 @@ import type { QuizSessionConfig, SessionMode, SessionRecord } from './types';
 
 export default class OmniscientPlugin extends Plugin {
     settings: OmniscientSettings = Object.assign({}, DEFAULT_SETTINGS);
+    /**
+     * Config handed to the next quiz view that opens. View state is only
+     * available after onOpen() in Obsidian, so the config is passed through
+     * the plugin instead of view state.
+     */
+    private pendingQuizConfig: QuizSessionConfig | null = null;
 
     async onload(): Promise<void> {
         try {
@@ -130,16 +136,24 @@ export default class OmniscientPlugin extends Plugin {
         ).open();
     }
 
+    /**
+     * Returns the config for a quiz view that is about to open, and clears
+     * the slot. Returns null when the view is restored from a saved layout.
+     */
+    consumePendingQuizConfig(): QuizSessionConfig | null {
+        const config = this.pendingQuizConfig;
+        this.pendingQuizConfig = null;
+        return config;
+    }
+
     private async openQuizView(file: TFile, config: QuizSessionConfig): Promise<void> {
         try {
+            this.pendingQuizConfig = Object.assign({}, config, { filePath: file.path });
             const leaf = this.app.workspace.getLeaf('tab');
-            await leaf.setViewState({
-                type: QUIZ_VIEW_TYPE,
-                active: true,
-                state: { config: Object.assign({}, config, { filePath: file.path }) },
-            });
+            await leaf.setViewState({ type: QUIZ_VIEW_TYPE, active: true });
             void this.app.workspace.revealLeaf(leaf);
         } catch (error) {
+            this.pendingQuizConfig = null;
             console.error('Omniscient: failed to open quiz view', error);
             new Notice('Could not open the quiz view. See the developer console for details.');
         }
