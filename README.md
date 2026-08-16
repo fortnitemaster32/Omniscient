@@ -2,7 +2,7 @@
 
 Quiz-and-recall study sessions for Obsidian, inspired by the **quiz-and-recall method** and **mega-problem sets** from *How to Be a Straight-A Student* by Cal Newport.
 
-Keep all of your practice questions for a subject in one markdown file. Omniscient turns that file into a fast, keyboard-driven testing session: the question is shown, the answer stays hidden until you reveal it, and you grade yourself honestly. Every grade is written back to the file, so your notes *are* the progress tracker.
+Keep all of your practice questions for a subject in one markdown file (or a folder of them). Omniscient turns them into fast, keyboard-driven testing sessions: the question is shown, the answer stays hidden until you reveal it, and you grade yourself honestly. Every grade is written back to the file, so your notes *are* the progress tracker.
 
 ## How it works
 
@@ -47,6 +47,7 @@ The derivative describes the rate of change...
 - LaTeX (`$$...$$`), code blocks, and nested callouts inside questions and answers are rendered normally.
 - Questions without an answer are fine — the reveal will say so.
 - One file can hold any number of questions; use headings to organize by topic.
+- For multi-file subjects, a folder of question files is treated as one big mega-problem set (see "Start quiz from folder").
 
 ### Status metadata
 
@@ -64,6 +65,7 @@ Grading rules:
 - `Mastered` increments the counter (`Mastered(1)`, `Mastered(2)`, ...). The counter resets if you ever grade it anything else.
 - A question is **exam-ready** when its counter reaches the "Mastered passes" setting (default: 2).
 - `Almost` and `Struggling` are also tracked, so "review only the gaps" is always one click away.
+- **Undo** restores the previous status and counter, both in the session and in the file.
 
 ### Difficulty metadata
 
@@ -79,6 +81,8 @@ Metadata tokens are read from the **end of the line** and rewritten in canonical
 
 ## Usage
 
+Commands (assign hotkeys in Settings → Hotkeys if you want them):
+
 | Command | What it does |
 | --- | --- |
 | **Start quiz** | Runs a session on the active file |
@@ -86,7 +90,7 @@ Metadata tokens are read from the **end of the line** and rewritten in canonical
 | **Start quiz from folder** | Runs one session over every Markdown file in a folder (and its subfolders) — the mega-problem set across chapters |
 | **Show quiz progress** | Opens a per-file summary: exam-ready, mastered, almost, struggling, new, and counts by difficulty |
 
-There is also a **🎯 ribbon icon** in the left sidebar that starts a quiz with one click (or lets you pick a file).
+There is also a **ribbon icon** (a target) in the left sidebar that starts a quiz with one click, or lets you pick a file when no file is active.
 
 The setup dialog lets you:
 
@@ -115,7 +119,7 @@ Ending a session before all questions are answered is a first-class flow, not an
 
 ### Session history
 
-Every finished session is recorded (date, file, counts). The settings tab shows a summary and your totals — you can watch the mastered percentage climb over time.
+Every finished session is recorded (date, file, counts), including partial ones. The settings tab shows a summary and your totals — you can watch the mastered percentage climb over time.
 
 ## Settings
 
@@ -135,7 +139,7 @@ npm test         # parser + session unit tests
 npm run lint     # eslint (obsidianmd ruleset)
 ```
 
-The parser (`src/parser.ts`) and session engine (`src/session.ts`) are pure TypeScript with no Obsidian dependencies and are covered by unit tests in `tests/`.
+The parser (`src/parser.ts`) and session engine (`src/session.ts`) are pure TypeScript with no Obsidian dependencies and are covered by unit tests in `tests/`. A complete example quiz lives in `examples/calculus-quiz.md`.
 
 ## License
 
