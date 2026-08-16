@@ -4,8 +4,6 @@ Quiz-and-recall study sessions for Obsidian, inspired by the **quiz-and-recall m
 
 Keep all of your practice questions for a subject in one markdown file (or a folder of them). Omniscient turns them into fast, keyboard-driven testing sessions: the question is shown, the answer stays hidden until you reveal it, and you grade yourself honestly. Every grade is written back to the file, so your notes *are* the progress tracker.
 
-> https://community.obsidian.md/plugins/omniscient
-
 ## Requirements
 
 - Obsidian **1.13.0 or later** (uses the declarative settings API)
@@ -14,7 +12,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Installing
 
-Once listed, Omniscient installs from the community plugin browser. For a manual install, download `omniscient-<version>.zip` from the latest release, extract it, and copy the `omniscient` folder into `<your vault>/.obsidian/plugins/`. Then enable the plugin in Settings → Community plugins and reload Obsidian.
+Omniscient installs from the [community plugin browser](https://community.obsidian.md/plugins/omniscient). For a manual install, download `omniscient-<version>.zip` from the latest release, extract it, and copy the `omniscient` folder into `<your vault>/.obsidian/plugins/`. Then enable the plugin in Settings → Community plugins and reload Obsidian.
 
 ## How it works
 
