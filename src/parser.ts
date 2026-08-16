@@ -37,13 +37,13 @@ const STATUS_CANONICAL: Record<string, QuestionStatus> = {
 const STATUS_RE = /^(struggling|almost|mastered)\s*(?:\(\s*(\d+)\s*\))?$/i;
 
 /** Fast pre-scan regex used to find candidate quiz files in a vault. */
-export const HAS_QUESTIONS_RE = /^>\s*(?:\[!\s*)?question\b/im;
+export const HAS_QUESTIONS_RE = /^ {0,3}>\s*(?:\[!\s*)?question\b/im;
 
 /** Matches `> [!type] rest` callout-style headers. */
-const CALLOUT_RE = /^(\s*>\s*)\[!([^\]]*)\]([^\n]*)$/i;
+const CALLOUT_RE = /^( {0,3}>\s*)\[!([^\]]*)\]([^\n]*)$/i;
 
 /** Matches `> Question rest` plain-style headers. */
-const PLAIN_RE = /^(\s*>\s*)(question|answer)\b([^\n]*)$/i;
+const PLAIN_RE = /^( {0,3}>\s*)(question|answer)\b([^\n]*)$/i;
 
 export interface ParsedHeader {
     kind: 'question' | 'answer';
@@ -142,12 +142,14 @@ export function parseHeader(
 }
 
 /**
- * Strips one blockquote prefix from a line. Nested callouts (lines that
- * become `[!type]` after stripping) are re-prefixed so Obsidian still
+ * Strips one blockquote prefix from a line. Only 0-3 spaces of indentation
+ * are allowed before the `>` (CommonMark blockquote rule); deeper indented
+ * lines are indented code and are left untouched. Nested callouts (lines
+ * that become `[!type]` after stripping) are re-prefixed so Obsidian still
  * renders them as callouts inside the body.
  */
 export function stripQuotePrefix(line: string): string {
-    const m = /^\s*>\s?/.exec(line);
+    const m = /^ {0,3}>\s?/.exec(line);
     if (!m) {
         return line;
     }

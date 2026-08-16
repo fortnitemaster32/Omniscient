@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "description": "Quiz-and-recall study sessions from mega problem sets, inspired by How to Be a Straight-A Student.",
   "main": "main.js",
+  "author": "amorous shams",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/amorous-shams/omniscient"
+  },
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
@@ -17,7 +23,6 @@
     "recall",
     "flashcards"
   ],
-  "license": "MIT",
   "devDependencies": {
     "esbuild": "^0.25.0",
     "eslint": "^9.19.0",

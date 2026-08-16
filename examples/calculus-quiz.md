@@ -3,9 +3,26 @@ tags:
   - quiz
 ---
 
-# Mock Calculus Quiz
+<!--
+Omniscient example quiz — 10 calculus questions across limits, derivatives,
+and integrals, with a deliberate mix of difficulties and statuses so every
+filter can be tested.
 
-10 questions covering limits, derivatives, and integrals, with a mix of difficulties and statuses so you can test every filter. Grade them yourself and watch the question lines update in real time.
+Format: each question is a callout pair. Metadata follows the pipes:
+
+    > [!Question] Question | Difficulty | Status
+    > [!Answer] Answer
+
+Statuses: (none) = new, Struggling, Almost, Mastered(n) where n is the
+number of consecutive mastered passes. Difficulty labels are configurable
+in settings (defaults: Easy, Medium, Hard).
+
+To try it: open this file, run the "Start quiz" command (or click the
+target ribbon icon), then grade yourself with 1, 2, or 3. Question 2 has
+no answer on purpose. Watch the status tokens update as you grade.
+-->
+
+# Mock Calculus Quiz
 
 ## Limits
 

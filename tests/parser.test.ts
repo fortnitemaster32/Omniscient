@@ -423,6 +423,27 @@ test('mastered(0) counts as one pass', () => {
     eq(questions[0]?.passes, 1);
 });
 
+test('three-space indented headers still parse', () => {
+    const h = parseHeader('   > Question | Hard', LABELS);
+    eq(h?.kind, 'question');
+    eq(h?.tokens, ['Hard']);
+});
+
+test('four-space indented question lines are code, not headers', () => {
+    const content = [
+        '    > [!Question] Question | Hard',
+        '    > [!Answer] Answer',
+        '> Question',
+        'real body',
+        '> Answer',
+        'real answer',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 1);
+    eq(questions[0]?.questionBody, 'real body');
+    eq(questions[0]?.answerBody, 'real answer');
+});
+
 test('patchQuestionHeader is a no-op when the header changed', () => {
     const content = '> Question\nbody\n> Answer\nans';
     const { questions } = parseQuestions(content, LABELS);

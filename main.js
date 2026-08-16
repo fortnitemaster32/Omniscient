@@ -72,9 +72,9 @@ var STATUS_CANONICAL = {
   mastered: "Mastered"
 };
 var STATUS_RE = /^(struggling|almost|mastered)\s*(?:\(\s*(\d+)\s*\))?$/i;
-var HAS_QUESTIONS_RE = /^>\s*(?:\[!\s*)?question\b/im;
-var CALLOUT_RE = /^(\s*>\s*)\[!([^\]]*)\]([^\n]*)$/i;
-var PLAIN_RE = /^(\s*>\s*)(question|answer)\b([^\n]*)$/i;
+var HAS_QUESTIONS_RE = /^ {0,3}>\s*(?:\[!\s*)?question\b/im;
+var CALLOUT_RE = /^( {0,3}>\s*)\[!([^\]]*)\]([^\n]*)$/i;
+var PLAIN_RE = /^( {0,3}>\s*)(question|answer)\b([^\n]*)$/i;
 function isStatusToken(token) {
   var _a;
   const m = STATUS_RE.exec(token.trim());
@@ -131,7 +131,7 @@ function parseHeader(line, difficultyLabels) {
   return { kind, lineStem, tokens };
 }
 function stripQuotePrefix(line) {
-  const m = /^\s*>\s?/.exec(line);
+  const m = /^ {0,3}>\s?/.exec(line);
   if (!m) {
     return line;
   }

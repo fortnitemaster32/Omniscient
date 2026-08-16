@@ -4,6 +4,12 @@ Quiz-and-recall study sessions for Obsidian, inspired by the **quiz-and-recall m
 
 Keep all of your practice questions for a subject in one markdown file (or a folder of them). Omniscient turns them into fast, keyboard-driven testing sessions: the question is shown, the answer stays hidden until you reveal it, and you grade yourself honestly. Every grade is written back to the file, so your notes *are* the progress tracker.
 
+## Requirements
+
+- Obsidian **1.13.0 or later** (uses the declarative settings API)
+
+See [CHANGELOG.md](CHANGELOG.md) for release history and [CONTRIBUTING.md](CONTRIBUTING.md) for development and contribution guidelines.
+
 ## How it works
 
 The quiz-and-recall method works like this: answer from memory (never passively re-read), mark what you missed, review only those, and repeat until you complete a pass with no mistakes. Omniscient encodes exactly that loop:
@@ -121,6 +127,22 @@ Ending a session before all questions are answered is a first-class flow, not an
 
 Every finished session is recorded (date, file, counts), including partial ones. The settings tab shows a summary and your totals — you can watch the mastered percentage climb over time.
 
+## Troubleshooting
+
+**The quiz view closes immediately or nothing happens when starting a session.**
+
+1. Reload Obsidian (**Ctrl+R**) after installing or updating the plugin.
+2. Make sure the active file is a Markdown file with at least one `> [!Question]` block.
+3. Check the developer console (**Ctrl+Shift+I**) for a red error starting with `Omniscient:` — any failure is reported there and as a notice.
+
+**A grade did not change the file.**
+
+The plugin writes statuses only to questions it can still find unchanged. If you edited a question's text or header during a session, that question is skipped (and counted in the summary) so your edits are never corrupted. Grade it again in the next session.
+
+**Questions are missing from a session.**
+
+Check the status filter and difficulty filter in the setup dialog, and that the file uses the format above. Lines indented 4+ spaces are treated as code, and question-like lines inside fenced code blocks are body text.
+
 ## Settings
 
 | Setting | Default | Notes |
@@ -140,6 +162,10 @@ npm run lint     # eslint (obsidianmd ruleset)
 ```
 
 The parser (`src/parser.ts`) and session engine (`src/session.ts`) are pure TypeScript with no Obsidian dependencies and are covered by unit tests in `tests/`. A complete example quiz lives in `examples/calculus-quiz.md`.
+
+### Releasing
+
+Push a tag matching `[0-9]+.[0-9]+.[0-9]+`; the release workflow (`.github/workflows/release.yml`) builds, lints, tests, updates `versions.json`, and creates a GitHub release with `main.js`, `manifest.json`, `styles.css`, and `versions.json` plus build provenance attestation.
 
 ## License
 
