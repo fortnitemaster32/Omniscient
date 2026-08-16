@@ -13,12 +13,6 @@ import type { GradeKind, QuestionBlock, QuizSessionConfig } from './types';
 
 export const QUIZ_VIEW_TYPE = 'omniscient-quiz-view';
 
-function formatTime(total: number): string {
-    const m = Math.floor(total / 60);
-    const s = Math.floor(total % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 export class QuizView extends ItemView {
     private config: QuizSessionConfig | null = null;
     private session: QuizSession | null = null;
@@ -27,9 +21,6 @@ export class QuizView extends ItemView {
     private finished = false;
     private failedWrites = 0;
     private writeQueue: Promise<void> = Promise.resolve();
-    private timerHandle: number | null = null;
-    private timeLeftSec = 0;
-    private readonly startedAt = Date.now();
 
     constructor(
         leaf: WorkspaceLeaf,
@@ -94,25 +85,11 @@ export class QuizView extends ItemView {
         this.registerDomEvent(this.containerEl, 'keydown', (event) =>
             this.handleKeydown(event),
         );
-        if (this.config.mode === 'timed') {
-            this.timeLeftSec = Math.max(
-                60,
-                Math.round(this.config.minutesPerQuestion * this.session.total * 60),
-            );
-            this.updateTimer();
-            const win = this.containerEl.ownerDocument.defaultView ?? window;
-            this.timerHandle = win.setInterval(() => this.tick(), 1000);
-        }
         this.renderQuestion();
         this.containerEl.focus();
     }
 
     onClose(): Promise<void> {
-        const win = this.containerEl.ownerDocument.defaultView ?? window;
-        if (this.timerHandle !== null) {
-            win.clearInterval(this.timerHandle);
-            this.timerHandle = null;
-        }
         return Promise.resolve();
     }
 
@@ -135,13 +112,6 @@ export class QuizView extends ItemView {
             cls: 'omniscient-quiz-title',
             text: this.file?.basename ?? 'Quiz',
         });
-        header.createDiv({
-            cls: 'omniscient-quiz-mode',
-            text: this.config?.mode === 'timed' ? 'Timed mock exam' : 'Practice',
-        });
-        if (this.config?.mode === 'timed') {
-            this.timerEl = header.createDiv({ cls: 'omniscient-timer' });
-        }
         header.createDiv({ cls: 'omniscient-quiz-spacer' });
         this.progressTextEl = header.createDiv({ cls: 'omniscient-progress-text' });
         const endButton = header.createEl('button', {
@@ -256,12 +226,6 @@ export class QuizView extends ItemView {
         }
     }
 
-    private updateTimer(): void {
-        if (this.timerEl) {
-            this.timerEl.setText(formatTime(this.timeLeftSec));
-        }
-    }
-
     // ------------------------------------------------------------------
     // Interaction
     // ------------------------------------------------------------------
@@ -337,65 +301,34 @@ export class QuizView extends ItemView {
         });
     }
 
-    private tick(): void {
-        if (this.finished || this.session === null) {
-            return;
-        }
-        this.timeLeftSec--;
-        this.updateTimer();
-        if (this.timeLeftSec <= 0) {
-            // Time is up: everything unanswered counts as struggling.
-            while (!this.session.isComplete) {
-                const graded = this.session.gradeCurrent('Struggling');
-                if (graded === null) {
-                    break;
-                }
-                this.enqueueWrite(graded.block);
-            }
-            this.updateProgress();
-            this.endSession();
-        }
-    }
-
     private endSession(): void {
         const session = this.session;
         if (session === null || this.finished) {
             return;
         }
         this.finished = true;
-        const win = this.containerEl.ownerDocument.defaultView ?? window;
-        if (this.timerHandle !== null) {
-            win.clearInterval(this.timerHandle);
-            this.timerHandle = null;
-        }
         const counts = session.counts;
-        const timeSec = Math.round((Date.now() - this.startedAt) / 1000);
         void this.plugin.recordSession({
             date: new Date().toISOString(),
-            mode: this.config?.mode ?? 'practice',
             filePath: this.config?.filePath ?? '',
             total: session.total,
             answered: counts.answered,
             mastered: counts.mastered,
             almost: counts.almost,
             struggling: counts.struggling,
-            timeSec,
         });
         const file = this.file;
-        const config = this.config;
         new SummaryModal(this.app, {
-            mode: config?.mode ?? 'practice',
             fileBasename: file?.basename ?? 'Quiz',
             counts,
             total: session.total,
-            timeSec,
             failedWrites: this.failedWrites,
             onDone: () => {
                 this.leaf.detach();
             },
             onReviewStruggling: () => {
                 if (file !== null) {
-                    void this.plugin.startQuizFlow(file, 'practice', {
+                    void this.plugin.startQuizFlow(file, {
                         statusFilter: 'struggling',
                     });
                 }
@@ -409,7 +342,6 @@ export class QuizView extends ItemView {
 
     private contentArea: HTMLElement | null = null;
     private hintEl: HTMLElement | null = null;
-    private timerEl: HTMLElement | null = null;
     private progressTextEl: HTMLElement | null = null;
     private progressFillEl: HTMLElement | null = null;
 }

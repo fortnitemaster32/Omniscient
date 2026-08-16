@@ -12,8 +12,6 @@ export interface OmniscientSettings {
     masteredPasses: number;
     /** Randomize question order when a session starts. */
     shuffleByDefault: boolean;
-    /** Minutes allotted per question in timed mock exams. */
-    minutesPerQuestion: number;
     /** Finished sessions, newest first. */
     history: SessionRecord[];
 }
@@ -22,7 +20,6 @@ export const DEFAULT_SETTINGS: OmniscientSettings = {
     difficultyLabels: 'Easy, Medium, Hard',
     masteredPasses: 2,
     shuffleByDefault: true,
-    minutesPerQuestion: 2,
     history: [],
 };
 
@@ -33,17 +30,10 @@ export function parseDifficultyLabels(raw: string): string[] {
         .filter((s) => s.length > 0);
 }
 
-function formatSeconds(total: number): string {
-    const m = Math.floor(total / 60);
-    const s = Math.floor(total % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 function formatSessionLine(record: SessionRecord): string {
     const fileName = record.filePath.split('/').pop() ?? record.filePath;
     const date = record.date.slice(0, 10);
-    const mode = record.mode === 'timed' ? 'timed' : 'practice';
-    return `${date} · ${mode} · ${fileName} · ${record.mastered}/${record.answered} mastered`;
+    return `${date} · ${fileName} · ${record.mastered}/${record.answered} mastered`;
 }
 
 export class OmniscientSettingTab extends PluginSettingTab {
@@ -83,17 +73,6 @@ export class OmniscientSettingTab extends PluginSettingTab {
                 control: { type: 'toggle', key: 'shuffleByDefault' },
             },
             {
-                name: 'Minutes per question',
-                desc: 'Time allotted per question in timed mock exams.',
-                control: {
-                    type: 'number',
-                    key: 'minutesPerQuestion',
-                    min: 0.5,
-                    max: 60,
-                    step: 0.5,
-                },
-            },
-            {
                 name: 'Session history',
                 desc: 'A summary of your most recent quiz sessions.',
                 render: (setting: Setting, _group: SettingGroup) => {
@@ -118,12 +97,6 @@ export class OmniscientSettingTab extends PluginSettingTab {
                                 text: formatSessionLine(record),
                             });
                         }
-                        frag.createDiv({
-                            text: `Total time studied: ${formatSeconds(
-                                history.reduce((sum, r) => sum + r.timeSec, 0),
-                            )}`,
-                            cls: 'omniscient-history-total',
-                        });
                     }
                     setting.descEl.empty();
                     setting.descEl.appendChild(frag);

@@ -4,8 +4,6 @@ export type QuestionStatus = 'Struggling' | 'Almost' | 'Mastered';
 
 export type GradeKind = QuestionStatus;
 
-export type SessionMode = 'practice' | 'timed';
-
 export type StatusFilter =
     | 'all'
     | 'new'
@@ -41,12 +39,9 @@ export interface QuestionBlock {
 /** Everything needed to run a quiz session. */
 export interface QuizSessionConfig {
     filePath: string;
-    mode: SessionMode;
     shuffle: boolean;
     statusFilter: StatusFilter;
     difficultyFilter: string;
-    /** Minutes allotted per question in timed mode. */
-    minutesPerQuestion: number;
     /** Consecutive mastered passes required to be considered exam-ready. */
     masteredPasses: number;
 }
@@ -55,12 +50,10 @@ export interface QuizSessionConfig {
 export interface SessionRecord {
     /** ISO timestamp of when the session ended. */
     date: string;
-    mode: SessionMode;
     filePath: string;
     total: number;
     answered: number;
     mastered: number;
     almost: number;
     struggling: number;
-    timeSec: number;
 }

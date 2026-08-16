@@ -11,7 +11,7 @@ import {
 } from './settings';
 import { SetupModal } from './setupModal';
 import type { OmniscientSettings } from './settings';
-import type { QuizSessionConfig, SessionMode, SessionRecord } from './types';
+import type { QuizSessionConfig, SessionRecord } from './types';
 
 export default class OmniscientPlugin extends Plugin {
     settings: OmniscientSettings = Object.assign({}, DEFAULT_SETTINGS);
@@ -32,12 +32,7 @@ export default class OmniscientPlugin extends Plugin {
             this.addCommand({
                 id: 'start-quiz',
                 name: 'Start quiz',
-                checkCallback: (checking) => this.startQuizCommand(checking, 'practice'),
-            });
-            this.addCommand({
-                id: 'start-timed-exam',
-                name: 'Start timed mock exam',
-                checkCallback: (checking) => this.startQuizCommand(checking, 'timed'),
+                checkCallback: (checking) => this.startQuizCommand(checking),
             });
             this.addCommand({
                 id: 'choose-quiz-file',
@@ -50,7 +45,7 @@ export default class OmniscientPlugin extends Plugin {
             this.addRibbonIcon('target', 'Start quiz', () => {
                 const file = this.app.workspace.getActiveFile();
                 if (file && file.extension === 'md') {
-                    void this.startQuizFlow(file, 'practice');
+                    void this.startQuizFlow(file);
                 } else {
                     void this.pickQuizFile();
                 }
@@ -73,7 +68,7 @@ export default class OmniscientPlugin extends Plugin {
      * Always enabled so the palette never silently no-ops: if there is no
      * active markdown file we say so explicitly.
      */
-    private startQuizCommand(checking: boolean, mode: SessionMode): boolean {
+    private startQuizCommand(checking: boolean): boolean {
         if (checking) {
             return true;
         }
@@ -82,7 +77,7 @@ export default class OmniscientPlugin extends Plugin {
             new Notice('Open a markdown file first, then run this command.');
             return true;
         }
-        void this.startQuizFlow(file, mode);
+        void this.startQuizFlow(file);
         return true;
     }
 
@@ -95,7 +90,6 @@ export default class OmniscientPlugin extends Plugin {
      */
     async startQuizFlow(
         file: TFile,
-        mode: SessionMode,
         preset?: Partial<QuizSessionConfig>,
     ): Promise<void> {
         let content: string;
@@ -113,27 +107,18 @@ export default class OmniscientPlugin extends Plugin {
         if (preset) {
             const config: QuizSessionConfig = {
                 filePath: file.path,
-                mode,
                 shuffle: this.settings.shuffleByDefault,
                 statusFilter: 'all',
                 difficultyFilter: 'all',
-                minutesPerQuestion: this.settings.minutesPerQuestion,
                 masteredPasses: this.settings.masteredPasses,
                 ...preset,
             };
             void this.openQuizView(file, config);
             return;
         }
-        new SetupModal(
-            this.app,
-            this,
-            file.path,
-            mode,
-            questions.length,
-            (config) => {
-                void this.openQuizView(file, config);
-            },
-        ).open();
+        new SetupModal(this.app, this, file.path, questions.length, (config) => {
+            void this.openQuizView(file, config);
+        }).open();
     }
 
     /**

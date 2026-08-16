@@ -8,19 +8,19 @@ Keep all of your practice questions for a subject in one markdown file. Omniscie
 
 The quiz-and-recall method works like this: answer from memory (never passively re-read), mark what you missed, review only those, and repeat until you complete a pass with no mistakes. Omniscient encodes exactly that loop:
 
-1. **Run a session** on any file with `> Question` blocks.
+1. **Run a session** on any file with `> [!Question]` callout blocks.
 2. **Answer from memory** — the answer is hidden until you ask for it.
 3. **Reveal the answer**, then self-grade: `Struggling`, `Almost`, or `Mastered`.
 4. **Repeat with only the gaps** — the "Not mastered yet" filter gives you the next pass; keep going until you finish a session with nothing left to review.
 
 ## Question format
 
-Any markdown file containing blockquote question/answer pairs. Both of these styles work:
+Any markdown file containing blockquote question/answer pairs. The callout style is recommended so Obsidian renders the blocks as nice foldable callouts:
 
 ```markdown
 ## Calculus
 
-> Question | Hard | Mastered(2)
+> [!Question] | Hard | Mastered(2)
 
 What is the maximum of this function?
 
@@ -28,22 +28,22 @@ $$
 f(x) = x^{2} + 3 + \int_{0}^{x} x + 3 \, dx
 $$
 
-> Answer
+> [!Answer]
 
 The answer is...
 
 ---
 
-> [!question] Medium | Almost
+> [!Question] | Medium | Almost
 
 Explain what a derivative is and how to compute one.
 
-> [!answer]
+> [!Answer]
 
 The derivative describes the rate of change...
 ```
 
-- A question starts at `> Question` (or `> [!question]`); everything until the next `> Answer` is the question, everything after is the answer.
+- A question starts at `> [!Question]` (plain `> Question` also works); everything until the next `> [!Answer]` is the question, everything after is the answer.
 - LaTeX (`$$...$$`), code blocks, and nested callouts inside questions and answers are rendered normally.
 - Questions without an answer are fine — the reveal will say so.
 - One file can hold any number of questions; use headings to organize by topic.
@@ -70,7 +70,7 @@ Grading rules:
 Difficulty is optional and configurable in settings (defaults: `Easy, Medium, Hard`):
 
 ```markdown
-> Question | Hard
+> [!Question] | Hard
 
 ...
 ```
@@ -79,13 +79,12 @@ Metadata tokens are read from the **end of the line** and rewritten in canonical
 
 ## Usage
 
-Commands (assign hotkeys in Settings → Hotkeys if you want them):
-
 | Command | What it does |
 | --- | --- |
 | **Start quiz** | Runs a session on the active file |
-| **Start timed mock exam** | Same, but with a countdown — the final check before the real thing |
 | **Choose quiz file** | Picks any file in the vault that contains questions |
+
+There is also a **🎯 ribbon icon** in the left sidebar that starts a quiz with one click (or lets you pick a file).
 
 The setup dialog lets you:
 
@@ -105,13 +104,9 @@ The setup dialog lets you:
 
 Every grade is saved to the file immediately. If you edit the file during a session, the plugin detects it and skips writing to questions that changed — nothing gets corrupted.
 
-### Timed mock exam
-
-The book's advice: after your passes are clean, take a practice exam under timed conditions as a final check. Timed mode counts down (`minutes per question` × number of questions). When time runs out, unanswered questions are marked `Struggling` so the next session targets them.
-
 ### Session history
 
-Every finished session is recorded (date, mode, file, counts, time). The settings tab shows a summary and your totals — you can watch the mastered percentage climb and the study time shrink.
+Every finished session is recorded (date, file, counts). The settings tab shows a summary and your totals — you can watch the mastered percentage climb over time.
 
 ## Settings
 
@@ -120,7 +115,6 @@ Every finished session is recorded (date, mode, file, counts, time). The setting
 | Difficulty labels | `Easy, Medium, Hard` | Comma-separated; recognized on question lines |
 | Mastered passes | `2` | Consecutive mastered answers to be exam-ready |
 | Shuffle questions | on | Randomize order at session start |
-| Minutes per question | `2` | Timed mock exam budget |
 
 ## Development
 

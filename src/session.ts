@@ -50,7 +50,6 @@ function shuffle<T>(items: T[]): void {
 
 export class QuizSession {
     readonly total: number;
-    readonly startedAt = Date.now();
     private readonly items: SessionQuestion[];
     private cursor = 0;
 

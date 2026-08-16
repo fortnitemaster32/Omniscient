@@ -42,7 +42,7 @@ var QuizFilePicker = class extends import_obsidian.FuzzySuggestModal {
     return item.path;
   }
   onChooseItem(item) {
-    void this.plugin.startQuizFlow(item, "practice");
+    void this.plugin.startQuizFlow(item);
   }
 };
 
@@ -290,7 +290,6 @@ function shuffle(items) {
 }
 var QuizSession = class {
   constructor(blocks, config) {
-    this.startedAt = Date.now();
     this.cursor = 0;
     const filtered = blocks.filter((b) => matchesFilter(b, config));
     this.items = filtered.map((block) => ({ block, grade: null }));
@@ -355,11 +354,6 @@ var QuizSession = class {
 
 // src/summaryModal.ts
 var import_obsidian2 = require("obsidian");
-function formatTime(total) {
-  const m = Math.floor(total / 60);
-  const s = Math.floor(total % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 var SummaryModal = class extends import_obsidian2.Modal {
   constructor(app, options) {
     super(app);
@@ -367,10 +361,8 @@ var SummaryModal = class extends import_obsidian2.Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    const { counts, total, mode } = this.options;
-    this.setTitle(
-      mode === "timed" ? "Mock exam complete" : "Session complete"
-    );
+    const { counts, total } = this.options;
+    this.setTitle("Session complete");
     contentEl.createDiv({
       cls: "omniscient-summary-file",
       text: this.options.fileBasename
@@ -391,7 +383,6 @@ var SummaryModal = class extends import_obsidian2.Modal {
     cell("Mastered", String(counts.mastered), "omniscient-summary-good");
     cell("Almost", String(counts.almost), "omniscient-summary-warn");
     cell("Struggling", String(counts.struggling), "omniscient-summary-bad");
-    cell("Time", formatTime(this.options.timeSec));
     if (this.options.failedWrites > 0) {
       contentEl.createDiv({
         cls: "omniscient-summary-note",
@@ -420,11 +411,6 @@ var SummaryModal = class extends import_obsidian2.Modal {
 
 // src/quizView.ts
 var QUIZ_VIEW_TYPE = "omniscient-quiz-view";
-function formatTime2(total) {
-  const m = Math.floor(total / 60);
-  const s = Math.floor(total % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 var QuizView = class extends import_obsidian3.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -436,15 +422,11 @@ var QuizView = class extends import_obsidian3.ItemView {
     this.finished = false;
     this.failedWrites = 0;
     this.writeQueue = Promise.resolve();
-    this.timerHandle = null;
-    this.timeLeftSec = 0;
-    this.startedAt = Date.now();
     // ------------------------------------------------------------------
     // View element references (assigned in renderShell)
     // ------------------------------------------------------------------
     this.contentArea = null;
     this.hintEl = null;
-    this.timerEl = null;
     this.progressTextEl = null;
     this.progressFillEl = null;
   }
@@ -468,7 +450,6 @@ var QuizView = class extends import_obsidian3.ItemView {
     }
   }
   async setup() {
-    var _a;
     const config = this.plugin.consumePendingQuizConfig();
     if (!config) {
       this.leaf.detach();
@@ -502,32 +483,17 @@ var QuizView = class extends import_obsidian3.ItemView {
       "keydown",
       (event) => this.handleKeydown(event)
     );
-    if (this.config.mode === "timed") {
-      this.timeLeftSec = Math.max(
-        60,
-        Math.round(this.config.minutesPerQuestion * this.session.total * 60)
-      );
-      this.updateTimer();
-      const win = (_a = this.containerEl.ownerDocument.defaultView) != null ? _a : window;
-      this.timerHandle = win.setInterval(() => this.tick(), 1e3);
-    }
     this.renderQuestion();
     this.containerEl.focus();
   }
   onClose() {
-    var _a;
-    const win = (_a = this.containerEl.ownerDocument.defaultView) != null ? _a : window;
-    if (this.timerHandle !== null) {
-      win.clearInterval(this.timerHandle);
-      this.timerHandle = null;
-    }
     return Promise.resolve();
   }
   // ------------------------------------------------------------------
   // Rendering
   // ------------------------------------------------------------------
   renderShell() {
-    var _a, _b, _c, _d;
+    var _a, _b;
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("omniscient-quiz-view");
@@ -541,13 +507,6 @@ var QuizView = class extends import_obsidian3.ItemView {
       cls: "omniscient-quiz-title",
       text: (_b = (_a = this.file) == null ? void 0 : _a.basename) != null ? _b : "Quiz"
     });
-    header.createDiv({
-      cls: "omniscient-quiz-mode",
-      text: ((_c = this.config) == null ? void 0 : _c.mode) === "timed" ? "Timed mock exam" : "Practice"
-    });
-    if (((_d = this.config) == null ? void 0 : _d.mode) === "timed") {
-      this.timerEl = header.createDiv({ cls: "omniscient-timer" });
-    }
     header.createDiv({ cls: "omniscient-quiz-spacer" });
     this.progressTextEl = header.createDiv({ cls: "omniscient-progress-text" });
     const endButton = header.createEl("button", {
@@ -648,11 +607,6 @@ var QuizView = class extends import_obsidian3.ItemView {
       this.progressFillEl.style.width = `${pct}%`;
     }
   }
-  updateTimer() {
-    if (this.timerEl) {
-      this.timerEl.setText(formatTime2(this.timeLeftSec));
-    }
-  }
   // ------------------------------------------------------------------
   // Interaction
   // ------------------------------------------------------------------
@@ -724,64 +678,35 @@ var QuizView = class extends import_obsidian3.ItemView {
       }
     });
   }
-  tick() {
-    if (this.finished || this.session === null) {
-      return;
-    }
-    this.timeLeftSec--;
-    this.updateTimer();
-    if (this.timeLeftSec <= 0) {
-      while (!this.session.isComplete) {
-        const graded = this.session.gradeCurrent("Struggling");
-        if (graded === null) {
-          break;
-        }
-        this.enqueueWrite(graded.block);
-      }
-      this.updateProgress();
-      this.endSession();
-    }
-  }
   endSession() {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c;
     const session = this.session;
     if (session === null || this.finished) {
       return;
     }
     this.finished = true;
-    const win = (_a = this.containerEl.ownerDocument.defaultView) != null ? _a : window;
-    if (this.timerHandle !== null) {
-      win.clearInterval(this.timerHandle);
-      this.timerHandle = null;
-    }
     const counts = session.counts;
-    const timeSec = Math.round((Date.now() - this.startedAt) / 1e3);
     void this.plugin.recordSession({
       date: (/* @__PURE__ */ new Date()).toISOString(),
-      mode: (_c = (_b = this.config) == null ? void 0 : _b.mode) != null ? _c : "practice",
-      filePath: (_e = (_d = this.config) == null ? void 0 : _d.filePath) != null ? _e : "",
+      filePath: (_b = (_a = this.config) == null ? void 0 : _a.filePath) != null ? _b : "",
       total: session.total,
       answered: counts.answered,
       mastered: counts.mastered,
       almost: counts.almost,
-      struggling: counts.struggling,
-      timeSec
+      struggling: counts.struggling
     });
     const file = this.file;
-    const config = this.config;
     new SummaryModal(this.app, {
-      mode: (_f = config == null ? void 0 : config.mode) != null ? _f : "practice",
-      fileBasename: (_g = file == null ? void 0 : file.basename) != null ? _g : "Quiz",
+      fileBasename: (_c = file == null ? void 0 : file.basename) != null ? _c : "Quiz",
       counts,
       total: session.total,
-      timeSec,
       failedWrites: this.failedWrites,
       onDone: () => {
         this.leaf.detach();
       },
       onReviewStruggling: () => {
         if (file !== null) {
-          void this.plugin.startQuizFlow(file, "practice", {
+          void this.plugin.startQuizFlow(file, {
             statusFilter: "struggling"
           });
         }
@@ -796,23 +721,16 @@ var DEFAULT_SETTINGS = {
   difficultyLabels: "Easy, Medium, Hard",
   masteredPasses: 2,
   shuffleByDefault: true,
-  minutesPerQuestion: 2,
   history: []
 };
 function parseDifficultyLabels(raw) {
   return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
 }
-function formatSeconds(total) {
-  const m = Math.floor(total / 60);
-  const s = Math.floor(total % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
 function formatSessionLine(record) {
   var _a;
   const fileName = (_a = record.filePath.split("/").pop()) != null ? _a : record.filePath;
   const date = record.date.slice(0, 10);
-  const mode = record.mode === "timed" ? "timed" : "practice";
-  return `${date} \xB7 ${mode} \xB7 ${fileName} \xB7 ${record.mastered}/${record.answered} mastered`;
+  return `${date} \xB7 ${fileName} \xB7 ${record.mastered}/${record.answered} mastered`;
 }
 var OmniscientSettingTab = class extends import_obsidian4.PluginSettingTab {
   constructor(app, plugin) {
@@ -848,17 +766,6 @@ var OmniscientSettingTab = class extends import_obsidian4.PluginSettingTab {
         control: { type: "toggle", key: "shuffleByDefault" }
       },
       {
-        name: "Minutes per question",
-        desc: "Time allotted per question in timed mock exams.",
-        control: {
-          type: "number",
-          key: "minutesPerQuestion",
-          min: 0.5,
-          max: 60,
-          step: 0.5
-        }
-      },
-      {
         name: "Session history",
         desc: "A summary of your most recent quiz sessions.",
         render: (setting, _group) => {
@@ -880,12 +787,6 @@ var OmniscientSettingTab = class extends import_obsidian4.PluginSettingTab {
                 text: formatSessionLine(record)
               });
             }
-            frag.createDiv({
-              text: `Total time studied: ${formatSeconds(
-                history.reduce((sum, r) => sum + r.timeSec, 0)
-              )}`,
-              cls: "omniscient-history-total"
-            });
           }
           setting.descEl.empty();
           setting.descEl.appendChild(frag);
@@ -915,17 +816,15 @@ var STATUS_OPTIONS = {
   mastered: "Mastered"
 };
 var SetupModal = class extends import_obsidian5.Modal {
-  constructor(app, plugin, filePath, mode, questionCount, onStart) {
+  constructor(app, plugin, filePath, questionCount, onStart) {
     super(app);
     this.plugin = plugin;
     this.filePath = filePath;
-    this.mode = mode;
     this.questionCount = questionCount;
     this.onStart = onStart;
     this.statusFilter = "all";
     this.difficultyFilter = "all";
     this.shuffle = plugin.settings.shuffleByDefault;
-    this.minutesPerQuestion = plugin.settings.minutesPerQuestion;
     this.difficultyLabels = plugin.getDifficultyLabels();
   }
   onOpen() {
@@ -939,7 +838,7 @@ var SetupModal = class extends import_obsidian5.Modal {
   }
   render() {
     const { contentEl } = this;
-    this.setTitle(this.mode === "timed" ? "Timed mock exam" : "Quiz setup");
+    this.setTitle("Quiz setup");
     new import_obsidian5.Setting(contentEl).setName("Questions").setDesc(`${this.questionCount} questions in the file`).addDropdown((dropdown) => {
       for (const [value, label] of Object.entries(STATUS_OPTIONS)) {
         dropdown.addOption(value, label);
@@ -964,27 +863,14 @@ var SetupModal = class extends import_obsidian5.Modal {
         this.shuffle = value;
       });
     });
-    if (this.mode === "timed") {
-      new import_obsidian5.Setting(contentEl).setName("Minutes per question").setDesc("Total time is this value times the number of questions").addText((text) => {
-        text.inputEl.type = "number";
-        text.inputEl.min = "0.5";
-        text.inputEl.step = "0.5";
-        text.setValue(String(this.minutesPerQuestion)).onChange((value) => {
-          const parsed = Number.parseFloat(value);
-          this.minutesPerQuestion = Number.isFinite(parsed) && parsed > 0 ? parsed : 2;
-        });
-      });
-    }
     new import_obsidian5.Setting(contentEl).addButton((button) => {
       button.setButtonText("Start session").setCta().onClick(() => {
         this.close();
         this.onStart({
           filePath: this.filePath,
-          mode: this.mode,
           shuffle: this.shuffle,
           statusFilter: this.statusFilter,
           difficultyFilter: this.difficultyFilter,
-          minutesPerQuestion: this.minutesPerQuestion,
           masteredPasses: this.plugin.settings.masteredPasses
         });
       });
@@ -1015,12 +901,7 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
       this.addCommand({
         id: "start-quiz",
         name: "Start quiz",
-        checkCallback: (checking) => this.startQuizCommand(checking, "practice")
-      });
-      this.addCommand({
-        id: "start-timed-exam",
-        name: "Start timed mock exam",
-        checkCallback: (checking) => this.startQuizCommand(checking, "timed")
+        checkCallback: (checking) => this.startQuizCommand(checking)
       });
       this.addCommand({
         id: "choose-quiz-file",
@@ -1032,7 +913,7 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
       this.addRibbonIcon("target", "Start quiz", () => {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === "md") {
-          void this.startQuizFlow(file, "practice");
+          void this.startQuizFlow(file);
         } else {
           void this.pickQuizFile();
         }
@@ -1052,7 +933,7 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
    * Always enabled so the palette never silently no-ops: if there is no
    * active markdown file we say so explicitly.
    */
-  startQuizCommand(checking, mode) {
+  startQuizCommand(checking) {
     if (checking) {
       return true;
     }
@@ -1061,7 +942,7 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
       new import_obsidian6.Notice("Open a markdown file first, then run this command.");
       return true;
     }
-    void this.startQuizFlow(file, mode);
+    void this.startQuizFlow(file);
     return true;
   }
   /**
@@ -1071,7 +952,7 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
    * "review struggling") the session starts immediately using the preset
    * over the settings defaults.
    */
-  async startQuizFlow(file, mode, preset) {
+  async startQuizFlow(file, preset) {
     let content;
     try {
       content = await this.app.vault.read(file);
@@ -1087,27 +968,18 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
     if (preset) {
       const config = {
         filePath: file.path,
-        mode,
         shuffle: this.settings.shuffleByDefault,
         statusFilter: "all",
         difficultyFilter: "all",
-        minutesPerQuestion: this.settings.minutesPerQuestion,
         masteredPasses: this.settings.masteredPasses,
         ...preset
       };
       void this.openQuizView(file, config);
       return;
     }
-    new SetupModal(
-      this.app,
-      this,
-      file.path,
-      mode,
-      questions.length,
-      (config) => {
-        void this.openQuizView(file, config);
-      }
-    ).open();
+    new SetupModal(this.app, this, file.path, questions.length, (config) => {
+      void this.openQuizView(file, config);
+    }).open();
   }
   /**
    * Returns the config for a quiz view that is about to open, and clears

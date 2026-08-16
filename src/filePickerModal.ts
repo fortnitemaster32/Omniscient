@@ -22,6 +22,6 @@ export class QuizFilePicker extends FuzzySuggestModal<TFile> {
     }
 
     onChooseItem(item: TFile): void {
-        void this.plugin.startQuizFlow(item, 'practice');
+        void this.plugin.startQuizFlow(item);
     }
 }

@@ -2,7 +2,7 @@
 
 import { App, Modal, Notice, Setting } from 'obsidian';
 import type OmniscientPlugin from './main';
-import type { QuizSessionConfig, SessionMode, StatusFilter } from './types';
+import type { QuizSessionConfig, StatusFilter } from './types';
 
 const STATUS_OPTIONS: Record<StatusFilter, string> = {
     all: 'All questions',
@@ -17,20 +17,17 @@ export class SetupModal extends Modal {
     private shuffle: boolean;
     private statusFilter: StatusFilter = 'all';
     private difficultyFilter: string = 'all';
-    private minutesPerQuestion: number;
     private readonly difficultyLabels: string[];
 
     constructor(
         app: App,
         private readonly plugin: OmniscientPlugin,
         private readonly filePath: string,
-        private readonly mode: SessionMode,
         private readonly questionCount: number,
         private readonly onStart: (config: QuizSessionConfig) => void,
     ) {
         super(app);
         this.shuffle = plugin.settings.shuffleByDefault;
-        this.minutesPerQuestion = plugin.settings.minutesPerQuestion;
         this.difficultyLabels = plugin.getDifficultyLabels();
     }
 
@@ -46,7 +43,7 @@ export class SetupModal extends Modal {
 
     private render(): void {
         const { contentEl } = this;
-        this.setTitle(this.mode === 'timed' ? 'Timed mock exam' : 'Quiz setup');
+        this.setTitle('Quiz setup');
 
         new Setting(contentEl)
             .setName('Questions')
@@ -84,32 +81,14 @@ export class SetupModal extends Modal {
                 });
             });
 
-        if (this.mode === 'timed') {
-            new Setting(contentEl)
-                .setName('Minutes per question')
-                .setDesc('Total time is this value times the number of questions')
-                .addText((text) => {
-                    text.inputEl.type = 'number';
-                    text.inputEl.min = '0.5';
-                    text.inputEl.step = '0.5';
-                    text.setValue(String(this.minutesPerQuestion)).onChange((value) => {
-                        const parsed = Number.parseFloat(value);
-                        this.minutesPerQuestion =
-                            Number.isFinite(parsed) && parsed > 0 ? parsed : 2;
-                    });
-                });
-        }
-
         new Setting(contentEl).addButton((button) => {
             button.setButtonText('Start session').setCta().onClick(() => {
                 this.close();
                 this.onStart({
                     filePath: this.filePath,
-                    mode: this.mode,
                     shuffle: this.shuffle,
                     statusFilter: this.statusFilter,
                     difficultyFilter: this.difficultyFilter,
-                    minutesPerQuestion: this.minutesPerQuestion,
                     masteredPasses: this.plugin.settings.masteredPasses,
                 });
             });

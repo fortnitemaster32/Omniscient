@@ -90,11 +90,9 @@ function makeBlock(overrides: Partial<QuestionBlock>): QuestionBlock {
 function makeConfig(overrides: Partial<QuizSessionConfig>): QuizSessionConfig {
     return {
         filePath: 'test.md',
-        mode: 'practice',
         shuffle: false,
         statusFilter: 'all',
         difficultyFilter: 'all',
-        minutesPerQuestion: 2,
         masteredPasses: 2,
         ...overrides,
     };

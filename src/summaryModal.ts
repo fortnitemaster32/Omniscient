@@ -2,23 +2,14 @@
 
 import { App, Modal, Setting } from 'obsidian';
 import type { SessionCounts } from './session';
-import type { SessionMode } from './types';
 
 export interface SummaryOptions {
-    mode: SessionMode;
     fileBasename: string;
     counts: SessionCounts;
     total: number;
-    timeSec: number;
     failedWrites: number;
     onDone: () => void;
     onReviewStruggling: () => void;
-}
-
-function formatTime(total: number): string {
-    const m = Math.floor(total / 60);
-    const s = Math.floor(total % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 export class SummaryModal extends Modal {
@@ -28,10 +19,8 @@ export class SummaryModal extends Modal {
 
     onOpen(): void {
         const { contentEl } = this;
-        const { counts, total, mode } = this.options;
-        this.setTitle(
-            mode === 'timed' ? 'Mock exam complete' : 'Session complete',
-        );
+        const { counts, total } = this.options;
+        this.setTitle('Session complete');
 
         contentEl.createDiv({
             cls: 'omniscient-summary-file',
@@ -54,7 +43,6 @@ export class SummaryModal extends Modal {
         cell('Mastered', String(counts.mastered), 'omniscient-summary-good');
         cell('Almost', String(counts.almost), 'omniscient-summary-warn');
         cell('Struggling', String(counts.struggling), 'omniscient-summary-bad');
-        cell('Time', formatTime(this.options.timeSec));
 
         if (this.options.failedWrites > 0) {
             contentEl.createDiv({
