@@ -459,6 +459,15 @@ var QuizView = class extends import_obsidian3.ItemView {
     return "target";
   }
   async onOpen() {
+    try {
+      await this.setup();
+    } catch (error) {
+      console.error("Omniscient: failed to open quiz view", error);
+      new import_obsidian3.Notice("Could not open the quiz view. See the developer console for details.");
+      this.leaf.detach();
+    }
+  }
+  async setup() {
     var _a;
     const state = this.getState();
     const config = state == null ? void 0 : state.config;
@@ -921,6 +930,15 @@ var SetupModal = class extends import_obsidian5.Modal {
     this.difficultyLabels = plugin.getDifficultyLabels();
   }
   onOpen() {
+    try {
+      this.render();
+    } catch (error) {
+      console.error("Omniscient: failed to render setup dialog", error);
+      new import_obsidian5.Notice("Omniscient setup failed. See the developer console for details.");
+      this.close();
+    }
+  }
+  render() {
     const { contentEl } = this;
     this.setTitle(this.mode === "timed" ? "Timed mock exam" : "Quiz setup");
     new import_obsidian5.Setting(contentEl).setName("Questions").setDesc(`${this.questionCount} questions in the file`).addDropdown((dropdown) => {
@@ -985,26 +1003,31 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
   }
   async onload() {
-    await this.loadPersisted();
-    this.registerView(QUIZ_VIEW_TYPE, (leaf) => new QuizView(leaf, this));
-    this.addSettingTab(new OmniscientSettingTab(this.app, this));
-    this.addCommand({
-      id: "start-quiz",
-      name: "Start quiz",
-      checkCallback: (checking) => this.startQuizCommand(checking, "practice")
-    });
-    this.addCommand({
-      id: "start-timed-exam",
-      name: "Start timed mock exam",
-      checkCallback: (checking) => this.startQuizCommand(checking, "timed")
-    });
-    this.addCommand({
-      id: "choose-quiz-file",
-      name: "Choose quiz file",
-      callback: () => {
-        void this.pickQuizFile();
-      }
-    });
+    try {
+      await this.loadPersisted();
+      this.registerView(QUIZ_VIEW_TYPE, (leaf) => new QuizView(leaf, this));
+      this.addSettingTab(new OmniscientSettingTab(this.app, this));
+      this.addCommand({
+        id: "start-quiz",
+        name: "Start quiz",
+        checkCallback: (checking) => this.startQuizCommand(checking, "practice")
+      });
+      this.addCommand({
+        id: "start-timed-exam",
+        name: "Start timed mock exam",
+        checkCallback: (checking) => this.startQuizCommand(checking, "timed")
+      });
+      this.addCommand({
+        id: "choose-quiz-file",
+        name: "Choose quiz file",
+        callback: () => {
+          void this.pickQuizFile();
+        }
+      });
+    } catch (error) {
+      console.error("Omniscient: failed to load", error);
+      new import_obsidian6.Notice("Omniscient failed to load. See the developer console for details.");
+    }
   }
   getDifficultyLabels() {
     return parseDifficultyLabels(this.settings.difficultyLabels);
@@ -1015,6 +1038,9 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
   startQuizCommand(checking, mode) {
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
+      if (!checking) {
+        new import_obsidian6.Notice("Open a markdown file first, then run this command.");
+      }
       return false;
     }
     if (!checking) {
@@ -1068,13 +1094,18 @@ var OmniscientPlugin = class extends import_obsidian6.Plugin {
     ).open();
   }
   async openQuizView(file, config) {
-    const leaf = this.app.workspace.getLeaf("tab");
-    await leaf.setViewState({
-      type: QUIZ_VIEW_TYPE,
-      active: true,
-      state: { config: Object.assign({}, config, { filePath: file.path }) }
-    });
-    void this.app.workspace.revealLeaf(leaf);
+    try {
+      const leaf = this.app.workspace.getLeaf("tab");
+      await leaf.setViewState({
+        type: QUIZ_VIEW_TYPE,
+        active: true,
+        state: { config: Object.assign({}, config, { filePath: file.path }) }
+      });
+      void this.app.workspace.revealLeaf(leaf);
+    } catch (error) {
+      console.error("Omniscient: failed to open quiz view", error);
+      new import_obsidian6.Notice("Could not open the quiz view. See the developer console for details.");
+    }
   }
   async pickQuizFile() {
     const files = [];

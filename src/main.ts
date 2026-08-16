@@ -17,28 +17,33 @@ export default class OmniscientPlugin extends Plugin {
     settings: OmniscientSettings = Object.assign({}, DEFAULT_SETTINGS);
 
     async onload(): Promise<void> {
-        await this.loadPersisted();
+        try {
+            await this.loadPersisted();
 
-        this.registerView(QUIZ_VIEW_TYPE, (leaf) => new QuizView(leaf, this));
-        this.addSettingTab(new OmniscientSettingTab(this.app, this));
+            this.registerView(QUIZ_VIEW_TYPE, (leaf) => new QuizView(leaf, this));
+            this.addSettingTab(new OmniscientSettingTab(this.app, this));
 
-        this.addCommand({
-            id: 'start-quiz',
-            name: 'Start quiz',
-            checkCallback: (checking) => this.startQuizCommand(checking, 'practice'),
-        });
-        this.addCommand({
-            id: 'start-timed-exam',
-            name: 'Start timed mock exam',
-            checkCallback: (checking) => this.startQuizCommand(checking, 'timed'),
-        });
-        this.addCommand({
-            id: 'choose-quiz-file',
-            name: 'Choose quiz file',
-            callback: () => {
-                void this.pickQuizFile();
-            },
-        });
+            this.addCommand({
+                id: 'start-quiz',
+                name: 'Start quiz',
+                checkCallback: (checking) => this.startQuizCommand(checking, 'practice'),
+            });
+            this.addCommand({
+                id: 'start-timed-exam',
+                name: 'Start timed mock exam',
+                checkCallback: (checking) => this.startQuizCommand(checking, 'timed'),
+            });
+            this.addCommand({
+                id: 'choose-quiz-file',
+                name: 'Choose quiz file',
+                callback: () => {
+                    void this.pickQuizFile();
+                },
+            });
+        } catch (error) {
+            console.error('Omniscient: failed to load', error);
+            new Notice('Omniscient failed to load. See the developer console for details.');
+        }
     }
 
     getDifficultyLabels(): string[] {
@@ -52,6 +57,9 @@ export default class OmniscientPlugin extends Plugin {
     private startQuizCommand(checking: boolean, mode: SessionMode): boolean {
         const file = this.app.workspace.getActiveFile();
         if (!file || file.extension !== 'md') {
+            if (!checking) {
+                new Notice('Open a markdown file first, then run this command.');
+            }
             return false;
         }
         if (!checking) {
@@ -111,13 +119,18 @@ export default class OmniscientPlugin extends Plugin {
     }
 
     private async openQuizView(file: TFile, config: QuizSessionConfig): Promise<void> {
-        const leaf = this.app.workspace.getLeaf('tab');
-        await leaf.setViewState({
-            type: QUIZ_VIEW_TYPE,
-            active: true,
-            state: { config: Object.assign({}, config, { filePath: file.path }) },
-        });
-        void this.app.workspace.revealLeaf(leaf);
+        try {
+            const leaf = this.app.workspace.getLeaf('tab');
+            await leaf.setViewState({
+                type: QUIZ_VIEW_TYPE,
+                active: true,
+                state: { config: Object.assign({}, config, { filePath: file.path }) },
+            });
+            void this.app.workspace.revealLeaf(leaf);
+        } catch (error) {
+            console.error('Omniscient: failed to open quiz view', error);
+            new Notice('Could not open the quiz view. See the developer console for details.');
+        }
     }
 
     private async pickQuizFile(): Promise<void> {

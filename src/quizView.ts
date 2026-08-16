@@ -55,6 +55,16 @@ export class QuizView extends ItemView {
     }
 
     async onOpen(): Promise<void> {
+        try {
+            await this.setup();
+        } catch (error) {
+            console.error('Omniscient: failed to open quiz view', error);
+            new Notice('Could not open the quiz view. See the developer console for details.');
+            this.leaf.detach();
+        }
+    }
+
+    private async setup(): Promise<void> {
         const state = this.getState() as QuizViewState | null;
         const config = state?.config;
         if (!config) {

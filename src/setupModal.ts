@@ -1,6 +1,6 @@
 /** Session setup modal: filters, shuffle, and timing. */
 
-import { App, Modal, Setting } from 'obsidian';
+import { App, Modal, Notice, Setting } from 'obsidian';
 import type OmniscientPlugin from './main';
 import type { QuizSessionConfig, SessionMode, StatusFilter } from './types';
 
@@ -35,6 +35,16 @@ export class SetupModal extends Modal {
     }
 
     onOpen(): void {
+        try {
+            this.render();
+        } catch (error) {
+            console.error('Omniscient: failed to render setup dialog', error);
+            new Notice('Omniscient setup failed. See the developer console for details.');
+            this.close();
+        }
+    }
+
+    private render(): void {
         const { contentEl } = this;
         this.setTitle(this.mode === 'timed' ? 'Timed mock exam' : 'Quiz setup');
 
