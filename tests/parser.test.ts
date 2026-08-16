@@ -126,6 +126,14 @@ test('foldable callout question header', () => {
     eq(h?.tokens, ['Medium', 'Almost']);
 });
 
+test('callout with title word keeps the word in the stem', () => {
+    const h = parseHeader('> [!Question] Question | Hard | Mastered(2)', LABELS);
+    eq(h?.kind, 'question');
+    eq(h?.lineStem, '> [!Question] Question');
+    eq(h?.tokens, ['Hard', 'Mastered(2)']);
+    eq(parseHeader('> [!Answer] Answer', LABELS)?.lineStem, '> [!Answer] Answer');
+});
+
 test('callout answer header', () => {
     const h = parseHeader('> [!answer]', LABELS);
     eq(h?.kind, 'answer');

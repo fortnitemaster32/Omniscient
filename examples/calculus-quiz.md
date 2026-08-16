@@ -9,7 +9,7 @@ tags:
 
 ## Limits
 
-> [!Question] | Easy | Mastered(2)
+> [!Question] Question | Easy | Mastered(2)
 
 Evaluate the limit:
 
@@ -17,7 +17,7 @@ $$
 \lim_{x \to 3} (2x + 1)
 $$
 
-> [!Answer]
+> [!Answer] Answer
 
 Just substitute $x = 3$:
 
@@ -25,7 +25,7 @@ $$
 2(3) + 1 = 7
 $$
 
-> [!Question] | Hard
+> [!Question] Question | Hard
 
 State L'Hôpital's rule and when it applies.
 
@@ -33,11 +33,11 @@ State L'Hôpital's rule and when it applies.
 
 ## Derivatives
 
-> [!Question] | Easy | Mastered(2)
+> [!Question] Question | Easy | Mastered(2)
 
 What is the derivative of $f(x) = x^2$?
 
-> [!Answer]
+> [!Answer] Answer
 
 By the power rule:
 
@@ -45,11 +45,11 @@ $$
 f'(x) = 2x
 $$
 
-> [!Question] | Medium | Almost
+> [!Question] Question | Medium | Almost
 
 State the power rule, then use it to differentiate $x^5$.
 
-> [!Answer]
+> [!Answer] Answer
 
 $$
 \frac{d}{dx} \left( x^n \right) = n x^{n-1}
@@ -61,7 +61,7 @@ $$
 \frac{d}{dx} \left( x^5 \right) = 5x^4
 $$
 
-> [!Question] | Hard | Struggling
+> [!Question] Question | Hard | Struggling
 
 Find the minimum of:
 
@@ -69,7 +69,7 @@ $$
 f(x) = x^{2} + 3 + \int_{0}^{x} (x + 3) \, dx
 $$
 
-> [!Answer]
+> [!Answer] Answer
 
 First evaluate the integral:
 
@@ -95,7 +95,7 @@ $$
 f(-1) = \frac{3}{2} - 3 + 3 = \frac{3}{2}
 $$
 
-> [!Question] | Hard | Almost
+> [!Question] Question | Hard | Almost
 
 Differentiate:
 
@@ -103,7 +103,7 @@ $$
 g(x) = \sin(3x^2 + 1)
 $$
 
-> [!Answer]
+> [!Answer] Answer
 
 Use the chain rule — differentiate the outer function first, then multiply by the derivative of the inside:
 
@@ -116,11 +116,11 @@ $$
 
 ## Integrals
 
-> [!Question] | Medium | Mastered(1)
+> [!Question] Question | Medium | Mastered(1)
 
 State the Fundamental Theorem of Calculus.
 
-> [!Answer]
+> [!Answer] Answer
 
 If $f$ is continuous on $[a, b]$ and $F$ is an antiderivative of $f$, then:
 
@@ -130,7 +130,7 @@ $$
 
 It connects differentiation and integration: the integral of a rate of change gives the net change.
 
-> [!Question] | Medium
+> [!Question] Question | Medium
 
 Evaluate the indefinite integral:
 
@@ -138,7 +138,7 @@ $$
 \int \frac{1}{x} \, dx
 $$
 
-> [!Answer]
+> [!Answer] Answer
 
 $$
 \int \frac{1}{x} \, dx = \ln|x| + C
@@ -146,11 +146,11 @@ $$
 
 Remember the absolute value — it makes the antiderivative valid for negative $x$ too.
 
-> [!Question] | Hard
+> [!Question] Question | Hard
 
 Write a Python function that approximates $\int_{0}^{1} x^2 \, dx$ using a Riemann sum with $n$ subintervals.
 
-> [!Answer]
+> [!Answer] Answer
 
 ```python
 def riemann_sum(f, a, b, n):
@@ -161,11 +161,11 @@ def riemann_sum(f, a, b, n):
 riemann_sum(lambda x: x**2, 0, 1, 1000)
 ```
 
-> [!Question] | Medium | Struggling
+> [!Question] Question | Medium | Struggling
 
 A car's velocity is $v(t) = 3t^2$ meters per second. How far does it travel between $t = 1$ and $t = 3$ seconds?
 
-> [!Answer]
+> [!Answer] Answer
 
 Distance is the integral of velocity:
 

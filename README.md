@@ -15,12 +15,12 @@ The quiz-and-recall method works like this: answer from memory (never passively 
 
 ## Question format
 
-Any markdown file containing blockquote question/answer pairs. The callout style is recommended so Obsidian renders the blocks as nice foldable callouts:
+Any markdown file containing blockquote question/answer pairs. The callout style is recommended so Obsidian renders the blocks as nice foldable callouts. The literal word `Question` after the callout is the title shown in Obsidian; metadata follows after the pipes:
 
 ```markdown
 ## Calculus
 
-> [!Question] | Hard | Mastered(2)
+> [!Question] Question | Hard | Mastered(2)
 
 What is the maximum of this function?
 
@@ -28,22 +28,22 @@ $$
 f(x) = x^{2} + 3 + \int_{0}^{x} x + 3 \, dx
 $$
 
-> [!Answer]
+> [!Answer] Answer
 
 The answer is...
 
 ---
 
-> [!Question] | Medium | Almost
+> [!Question] Question | Medium | Almost
 
 Explain what a derivative is and how to compute one.
 
-> [!Answer]
+> [!Answer] Answer
 
 The derivative describes the rate of change...
 ```
 
-- A question starts at `> [!Question]` (plain `> Question` also works); everything until the next `> [!Answer]` is the question, everything after is the answer.
+- A question starts at `> [!Question]` (the title word and metadata are optional: `> [!Question]` alone works, and plain `> Question` is also recognized); everything until the next answer block is the question, everything after is the answer.
 - LaTeX (`$$...$$`), code blocks, and nested callouts inside questions and answers are rendered normally.
 - Questions without an answer are fine — the reveal will say so.
 - One file can hold any number of questions; use headings to organize by topic.
@@ -70,7 +70,7 @@ Grading rules:
 Difficulty is optional and configurable in settings (defaults: `Easy, Medium, Hard`):
 
 ```markdown
-> [!Question] | Hard
+> [!Question] Question | Hard
 
 ...
 ```
