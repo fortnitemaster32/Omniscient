@@ -2,7 +2,21 @@
 
 All notable changes to Omniscient are documented here. The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - 2025-08-16
+## [Unreleased]
+
+### Changed
+
+- Release workflow packages a single-folder zip (`omniscient-<version>.zip`) for manual installs
+- Build provenance attaches automatically once the repository is public
+- README documents the feature-suggestion policy (GitHub Issues; sources such as peer-reviewed research or popular books are welcome)
+
+### Fixed
+
+- Callout types like `[!questionable]` or `[!success-story]` are no longer mistaken for quiz headers
+- Grades lost to mid-session edits are now counted in the summary instead of failing silently
+- Corrupt session history entries in `data.json` no longer crash the settings tab
+
+## [0.1.0] - 2026-08-16
 
 Initial release.
 

@@ -109,7 +109,7 @@ function parseHeader(line, difficultyLabels) {
   const callout = CALLOUT_RE.exec(line);
   if (callout) {
     const type = callout[2].trim().toLowerCase();
-    const kind2 = type.startsWith("question") ? "question" : type.startsWith("success") || type.startsWith("answer") ? "answer" : null;
+    const kind2 = type === "question" ? "question" : type === "success" || type === "answer" ? "answer" : null;
     if (!kind2) return null;
     let rest = callout[3];
     const foldable = /^-\s*/.test(rest) ? "-" : "";
@@ -300,10 +300,10 @@ function patchQuestionHeader(content, block, newLine, difficultyLabels) {
     }
   }
   if (best === null) {
-    return content;
+    return { content, patched: false };
   }
   lines[best] = newLine;
-  return lines.join(eol);
+  return { content: lines.join(eol), patched: true };
 }
 
 // src/progressModal.ts
@@ -896,11 +896,15 @@ var QuizView = class extends import_obsidian5.ItemView {
     const newLine = serializeHeader(block.stem, block.difficulty, block.status, block.passes);
     this.writeQueue = this.writeQueue.then(async () => {
       try {
-        await this.app.vault.process(
-          abstract,
-          (content) => patchQuestionHeader(content, block, newLine, labels)
-        );
-        block.headerLine = newLine;
+        await this.app.vault.process(abstract, (content) => {
+          const result = patchQuestionHeader(content, block, newLine, labels);
+          if (result.patched) {
+            block.headerLine = newLine;
+          } else {
+            this.failedWrites++;
+          }
+          return result.content;
+        });
       } catch (error) {
         console.error("Omniscient: failed to save question status", error);
         this.failedWrites++;
@@ -1400,7 +1404,7 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     const difficultyLabels = typeof raw.difficultyLabels === "string" && raw.difficultyLabels.trim().length > 0 ? raw.difficultyLabels : DEFAULT_SETTINGS.difficultyLabels;
     const masteredPasses = typeof raw.masteredPasses === "number" && Number.isFinite(raw.masteredPasses) && raw.masteredPasses >= 1 ? Math.floor(raw.masteredPasses) : DEFAULT_SETTINGS.masteredPasses;
     const shuffleByDefault = typeof raw.shuffleByDefault === "boolean" ? raw.shuffleByDefault : DEFAULT_SETTINGS.shuffleByDefault;
-    const history = Array.isArray(raw.history) ? [...raw.history] : [];
+    const history = Array.isArray(raw.history) ? raw.history.filter(isValidSessionRecord) : [];
     return {
       difficultyLabels,
       masteredPasses,
@@ -1418,3 +1422,10 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     await this.saveData(this.settings);
   }
 };
+function isValidSessionRecord(entry) {
+  if (typeof entry !== "object" || entry === null) {
+    return false;
+  }
+  const r = entry;
+  return typeof r.date === "string" && typeof r.filePath === "string" && typeof r.total === "number" && Number.isFinite(r.total) && typeof r.answered === "number" && Number.isFinite(r.answered) && typeof r.mastered === "number" && Number.isFinite(r.mastered) && typeof r.almost === "number" && Number.isFinite(r.almost) && typeof r.struggling === "number" && Number.isFinite(r.struggling);
+}

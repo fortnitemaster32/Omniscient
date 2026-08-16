@@ -289,7 +289,9 @@ export default class OmniscientPlugin extends Plugin {
             typeof raw.shuffleByDefault === 'boolean'
                 ? raw.shuffleByDefault
                 : DEFAULT_SETTINGS.shuffleByDefault;
-        const history = Array.isArray(raw.history) ? [...raw.history] : [];
+        const history = Array.isArray(raw.history)
+            ? raw.history.filter(isValidSessionRecord)
+            : [];
         return {
             difficultyLabels,
             masteredPasses,
@@ -298,8 +300,7 @@ export default class OmniscientPlugin extends Plugin {
         };
     }
 
-    async recordSession(record: SessionRecord): Promise<void> {
-        this.settings.history.unshift(record);
+    async recordSession(record: SessionRecord): Promise<void> {        this.settings.history.unshift(record);
         this.settings.history = this.settings.history.slice(0, 100);
         await this.saveData(this.settings);
     }
@@ -308,4 +309,29 @@ export default class OmniscientPlugin extends Plugin {
         this.settings.history = [];
         await this.saveData(this.settings);
     }
+}
+
+/**
+ * Field-by-field check for one session history record so a corrupted
+ * data.json cannot crash the settings tab.
+ */
+function isValidSessionRecord(entry: unknown): entry is SessionRecord {
+    if (typeof entry !== 'object' || entry === null) {
+        return false;
+    }
+    const r = entry as Record<string, unknown>;
+    return (
+        typeof r.date === 'string' &&
+        typeof r.filePath === 'string' &&
+        typeof r.total === 'number' &&
+        Number.isFinite(r.total) &&
+        typeof r.answered === 'number' &&
+        Number.isFinite(r.answered) &&
+        typeof r.mastered === 'number' &&
+        Number.isFinite(r.mastered) &&
+        typeof r.almost === 'number' &&
+        Number.isFinite(r.almost) &&
+        typeof r.struggling === 'number' &&
+        Number.isFinite(r.struggling)
+    );
 }

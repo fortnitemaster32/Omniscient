@@ -377,12 +377,20 @@ export class QuizView extends ItemView {
         const newLine = serializeHeader(block.stem, block.difficulty, block.status, block.passes);
         this.writeQueue = this.writeQueue.then(async () => {
             try {
-                await this.app.vault.process(abstract, (content) =>
-                    patchQuestionHeader(content, block, newLine, labels),
-                );
-                // Keep the locator in sync so later writes (e.g. after an
-                // undo) still find the header.
-                block.headerLine = newLine;
+                await this.app.vault.process(abstract, (content) => {
+                    const result = patchQuestionHeader(content, block, newLine, labels);
+                    if (result.patched) {
+                        // Keep the locator in sync so later writes (e.g. after
+                        // an undo) still find the header.
+                        block.headerLine = newLine;
+                    } else {
+                        // The question was edited mid-session: count it so the
+                        // summary reports the lost write instead of silently
+                        // dropping the grade.
+                        this.failedWrites++;
+                    }
+                    return result.content;
+                });
             } catch (error) {
                 console.error('Omniscient: failed to save question status', error);
                 this.failedWrites++;

@@ -22,6 +22,16 @@ import type { QuestionBlock, QuizSessionConfig } from '../src/types';
 
 const LABELS = ['Easy', 'Medium', 'Hard'];
 
+/** Patches a header and returns just the content (convenience for tests). */
+function patch(
+    content: string,
+    block: QuestionBlock,
+    newLine: string,
+    labels: string[],
+): string {
+    return patchQuestionHeader(content, block, newLine, labels).content;
+}
+
 let passed = 0;
 let failed = 0;
 
@@ -311,7 +321,7 @@ test('patchQuestionHeader replaces the matching header only', () => {
     ].join('\n');
     const { questions } = parseQuestions(content, LABELS);
     eq(questions.length, 2);
-    const patched = patchQuestionHeader(
+    const patched = patch(
         content,
         questions[1],
         '> Question | Mastered(1)',
@@ -326,19 +336,20 @@ test('patchQuestionHeader is a no-op when the body changed', () => {
     const content = '> Question\noriginal body\n> Answer\nans';
     const { questions } = parseQuestions(content, LABELS);
     const edited = content.replace('original body', 'edited body');
-    const patched = patchQuestionHeader(
+    const result = patchQuestionHeader(
         edited,
         questions[0],
         '> Question | Mastered(1)',
         LABELS,
     );
-    eq(patched, edited);
+    eq(result.patched, false);
+    eq(result.content, edited);
 });
 
 test('patchQuestionHeader preserves CRLF', () => {
     const content = '> Question\r\nbody\r\n> Answer\r\nans';
     const { questions } = parseQuestions(content, LABELS);
-    const patched = patchQuestionHeader(
+    const patched = patch(
         content,
         questions[0],
         '> Question | Hard | Mastered(1)',
@@ -352,13 +363,13 @@ test('patch follows an updated header line (grade, undo, regrade)', () => {
     const { questions } = parseQuestions(content, LABELS);
     const block = questions[0];
     const gradeLine = serializeHeader(block.stem, 'Hard', 'Struggling', 0);
-    let patched = patchQuestionHeader(content, block, gradeLine, LABELS);
+    let patched = patch(content, block, gradeLine, LABELS);
     block.headerLine = gradeLine;
     const undoLine = serializeHeader(block.stem, 'Hard', undefined, 0);
-    patched = patchQuestionHeader(patched, block, undoLine, LABELS);
+    patched = patch(patched, block, undoLine, LABELS);
     block.headerLine = undoLine;
     const regradeLine = serializeHeader(block.stem, 'Hard', 'Mastered', 1);
-    patched = patchQuestionHeader(patched, block, regradeLine, LABELS);
+    patched = patch(patched, block, regradeLine, LABELS);
     eq(patched, '> Question | Hard | Mastered(1)\nbody\n> Answer\nans');
 });
 
@@ -376,7 +387,7 @@ test('identical duplicate questions patch the right one', () => {
     ].join('\n');
     const { questions } = parseQuestions(content, LABELS);
     eq(questions.length, 2);
-    const patched = patchQuestionHeader(
+    const patched = patch(
         content,
         questions[1],
         '> Question | Mastered(1)',
@@ -402,7 +413,7 @@ test('question-like lines inside code fences are body text', () => {
     eq(questions[0]?.questionBody, '```markdown\n> Question\n> [!answer]\n```');
     eq(questions[0]?.answerBody, 'the answer');
     // The block is still patchable despite the fenced look-alike header.
-    const patched = patchQuestionHeader(
+    const patched = patch(
         content,
         questions[0],
         '> Question | Hard | Mastered(1)',
@@ -449,13 +460,30 @@ test('patchQuestionHeader is a no-op when the header changed', () => {
     const content = '> Question\nbody\n> Answer\nans';
     const { questions } = parseQuestions(content, LABELS);
     const edited = content.replace('> Question', '> Question | Easy');
-    const patched = patchQuestionHeader(
+    const result = patchQuestionHeader(
         edited,
         questions[0],
         '> Question | Mastered(1)',
         LABELS,
     );
-    eq(patched, edited);
+    eq(result.patched, false);
+    eq(result.content, edited);
+});
+
+test('look-alike callout types are not quiz delimiters', () => {
+    const content = [
+        '> [!questionable] Question',
+        '> [!success-story] Answer',
+        '> [!answerkey]',
+        '> Question',
+        'real body',
+        '> Answer',
+        'real answer',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 1);
+    eq(questions[0]?.questionBody, 'real body');
+    eq(questions[0]?.answerBody, 'real answer');
 });
 
 test('round trip: grade, serialize, re-parse', () => {
@@ -465,7 +493,7 @@ test('round trip: grade, serialize, re-parse', () => {
     block.status = 'Mastered';
     block.passes = 1;
     const newLine = serializeHeader(block.stem, block.difficulty, block.status, block.passes);
-    const patched = patchQuestionHeader(content, block, newLine, LABELS);
+    const patched = patch(content, block, newLine, LABELS);
     const reparsed = parseQuestions(patched, LABELS);
     eq(reparsed.questions[0]?.status, 'Mastered');
     eq(reparsed.questions[0]?.passes, 1);

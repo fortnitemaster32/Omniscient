@@ -115,11 +115,15 @@ export function parseHeader(
     const callout = CALLOUT_RE.exec(line);
     if (callout) {
         const type = callout[2].trim().toLowerCase();
-        const kind = type.startsWith('question')
-            ? 'question'
-            : type.startsWith('success') || type.startsWith('answer')
-              ? 'answer'
-              : null;
+        // Exact match only: Obsidian resolves callout types by exact name,
+        // so "[!questionable]" or "[!success-story]" are other callouts,
+        // not quiz delimiters.
+        const kind =
+            type === 'question'
+                ? 'question'
+                : type === 'success' || type === 'answer'
+                  ? 'answer'
+                  : null;
         if (!kind) return null;
         // Foldable callouts use a trailing dash after the type; keep it in
         // the stem so the original syntax survives a rewrite.
@@ -337,15 +341,16 @@ function bodyHashAt(
  *
  * The block is located by its original header text plus a hash of its
  * question body, so edits made to the file after the session started never
- * corrupt unrelated content: if the block can no longer be found, the
- * content is returned unchanged.
+ * corrupt unrelated content. When the block cannot be found, the content
+ * is returned unchanged with `patched: false` so the caller can count the
+ * failed write.
  */
 export function patchQuestionHeader(
     content: string,
     block: QuestionBlock,
     newLine: string,
     difficultyLabels: string[],
-): string {
+): { content: string; patched: boolean } {
     const eol: '\n' | '\r\n' = content.includes('\r\n') ? '\r\n' : '\n';
     const lines = content.split(/\r?\n/);
     const needle = block.headerLine.trim();
@@ -368,8 +373,8 @@ export function patchQuestionHeader(
         }
     }
     if (best === null) {
-        return content;
+        return { content, patched: false };
     }
     lines[best] = newLine;
-    return lines.join(eol);
+    return { content: lines.join(eol), patched: true };
 }

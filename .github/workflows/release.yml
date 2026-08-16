@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
+      - '[0-9]+\.[0-9]+\.[0-9]+'
 
 permissions:
   contents: write
@@ -14,6 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify tag matches manifest version
+        run: |
+          test "$(node -p "require('./manifest.json').version")" = "${{ github.ref_name }}" \
+            || { echo "Tag ${{ github.ref_name }} does not match manifest.json version"; exit 1; }
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -27,8 +32,13 @@ jobs:
       - name: Build, lint, and test
         run: npm run check
 
-      - name: Update versions.json
+      - name: Update versions.json on main
+        # The tag checkout is detached and may sit behind main, so update
+        # versions.json on a branch based on origin/main and fast-forward
+        # main with it. A missing change is a no-op commit and a no-op push.
         run: |
+          git fetch origin main
+          git checkout -B release-update origin/main
           node -e "
             const fs = require('fs');
             const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
@@ -36,16 +46,11 @@ jobs:
             versions[manifest.version] = manifest.minAppVersion;
             fs.writeFileSync('versions.json', JSON.stringify(versions, null, 2) + '\n');
           "
-
-      - name: Commit versions.json update
-        run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add versions.json
           git commit -m 'Update versions.json for release' || true
-          # Tag checkouts are detached; push the update back onto main
-          # explicitly so a non-fast-forward rejection is impossible.
-          git push origin HEAD:main
+          git push origin release-update:main
 
       - name: Package plugin folder
         # One-zip manual install: extract and copy the omniscient folder
