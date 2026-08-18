@@ -24,7 +24,7 @@ __export(main_exports, {
   default: () => OmniscientPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian8 = require("obsidian");
+var import_obsidian9 = require("obsidian");
 
 // src/filePickerModal.ts
 var import_obsidian = require("obsidian");
@@ -62,6 +62,91 @@ var FolderPickModal = class extends import_obsidian2.FuzzySuggestModal {
   }
   onChooseItem(item) {
     void this.plugin.startFolderQuizFlow(item);
+  }
+};
+
+// src/guideModal.ts
+var import_obsidian3 = require("obsidian");
+
+// src/icon.ts
+var OMNISCIENT_ICON = "brain";
+
+// src/guideModal.ts
+var GuideModal = class extends import_obsidian3.Modal {
+  constructor(app, options = {}) {
+    super(app);
+    this.options = options;
+  }
+  onOpen() {
+    this.render();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+  render() {
+    const { contentEl } = this;
+    this.setTitle("Getting started");
+    const header = contentEl.createDiv({ cls: "omniscient-guide-header" });
+    const logo = header.createDiv({ cls: "omniscient-guide-logo" });
+    (0, import_obsidian3.setIcon)(logo, OMNISCIENT_ICON);
+    header.createDiv({
+      cls: "omniscient-guide-intro",
+      text: "Quiz-and-recall study sessions for your mega problem sets. The question is shown, the answer stays hidden until you reveal it, and every grade is written back to your notes."
+    });
+    contentEl.createEl("h4", { cls: "omniscient-guide-heading", text: "The file format" });
+    contentEl.createDiv({
+      cls: "omniscient-guide-section",
+      text: "Any Markdown note can hold quiz questions. A question is a callout, and the next callout is its answer:"
+    });
+    contentEl.createEl("pre", {
+      cls: "omniscient-guide-example",
+      text: [
+        "> [!Question] Question | Hard | Mastered(2)",
+        "",
+        "What is the derivative of x\xB2?",
+        "",
+        "> [!Success] Answer",
+        "",
+        "2x"
+      ].join("\n")
+    });
+    const formatList = contentEl.createEl("ul", { cls: "omniscient-guide-list" });
+    this.listItem(formatList, "[!Question] starts a question; [!Success] (or [!answer]) starts its answer.");
+    this.listItem(formatList, "Optional metadata after the pipe: a difficulty label and a status like Mastered(2).");
+    this.listItem(formatList, "Questions inside code fences, or indented by four or more spaces, are ignored.");
+    contentEl.createEl("h4", { cls: "omniscient-guide-heading", text: "Start a session" });
+    const startList = contentEl.createEl("ul", { cls: "omniscient-guide-list" });
+    this.listItem(startList, "Run Start quiz for the current note, Choose quiz file, or Start quiz from folder from the command palette.");
+    this.listItem(startList, "The ribbon icon (a brain) starts a quiz for the active note, or opens the file picker.");
+    this.listItem(startList, "In the setup dialog you can filter by status and difficulty and toggle shuffling (it defaults to Not mastered yet, so each session shows only the gaps).");
+    contentEl.createEl("h4", { cls: "omniscient-guide-heading", text: "During the session" });
+    const sessionList = contentEl.createEl("ul", { cls: "omniscient-guide-list" });
+    this.listItem(sessionList, "Space reveals the answer; grade yourself with Struggling, Almost, or Mastered (keys 1, 2 and 3).");
+    this.listItem(sessionList, "Every grade is saved to the file immediately, and Undo restores it both in the session and in the note.");
+    this.listItem(sessionList, "Finishing early is normal: press Esc or End session whenever you run out of time.");
+    contentEl.createEl("h4", { cls: "omniscient-guide-heading", text: "Exam-ready" });
+    contentEl.createDiv({
+      cls: "omniscient-guide-section",
+      text: "A question is exam-ready once you answer Mastered as many times in a row as the Mastered passes setting requires (2 by default). Mastered(2) in your note means it is already there."
+    });
+    new import_obsidian3.Setting(contentEl).addButton((button) => {
+      button.setButtonText(this.options.onStart ? "Start using Omniscient" : "Got it").setCta().onClick(() => {
+        var _a, _b;
+        this.close();
+        (_b = (_a = this.options).onStart) == null ? void 0 : _b.call(_a);
+      });
+    }).addButton((button) => {
+      if (this.options.onCreateSample) {
+        button.setButtonText("Create a sample quiz file").onClick(() => {
+          var _a, _b;
+          this.close();
+          (_b = (_a = this.options).onCreateSample) == null ? void 0 : _b.call(_a);
+        });
+      }
+    });
+  }
+  listItem(list, text) {
+    list.createEl("li", { text });
   }
 };
 
@@ -307,9 +392,44 @@ function patchQuestionHeader(content, block, newLine, difficultyLabels) {
   return { content: lines.join(eol), patched: true };
 }
 
+// src/sampleQuiz.ts
+var SAMPLE_QUIZ_CONTENT = `<!-- Omniscient sample quiz
+Copy this file and replace the questions with your own.
+Format: a [!Question] callout holds the question, the following
+[!Success] callout holds its answer. Optional metadata after the
+pipe: a difficulty label and a status (Struggling, Almost, or
+Mastered with its pass count). -->
+
+# Omniscient sample quiz
+
+> [!Question] Question | Easy | Mastered(2)
+
+What is the derivative of x\xB2?
+
+> [!Success] Answer
+
+2x
+
+> [!Question] Question | Medium
+
+What does the quiz-and-recall method say about re-reading your notes?
+
+> [!Success] Answer
+
+Do not passively re-read: answer from memory first, then check.
+
+> [!Question] Question | Hard | Almost
+
+What is a mega-problem set?
+
+> [!Success] Answer
+
+A large set of practice questions on one topic, worked through with retrieval practice.
+`;
+
 // src/progressModal.ts
-var import_obsidian3 = require("obsidian");
-var ProgressModal = class extends import_obsidian3.Modal {
+var import_obsidian4 = require("obsidian");
+var ProgressModal = class extends import_obsidian4.Modal {
   constructor(app, fileBasename, summary) {
     super(app);
     this.fileBasename = fileBasename;
@@ -347,7 +467,7 @@ var ProgressModal = class extends import_obsidian3.Modal {
         });
       }
     }
-    new import_obsidian3.Setting(contentEl).addButton((button) => {
+    new import_obsidian4.Setting(contentEl).addButton((button) => {
       button.setButtonText("Done").onClick(() => {
         this.close();
       });
@@ -359,7 +479,7 @@ var ProgressModal = class extends import_obsidian3.Modal {
 };
 
 // src/quizView.ts
-var import_obsidian5 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/session.ts
 function matchesFilter(block, config) {
@@ -499,8 +619,8 @@ var QuizSession = class {
 };
 
 // src/summaryModal.ts
-var import_obsidian4 = require("obsidian");
-var SummaryModal = class extends import_obsidian4.Modal {
+var import_obsidian5 = require("obsidian");
+var SummaryModal = class extends import_obsidian5.Modal {
   constructor(app, options) {
     super(app);
     this.options = options;
@@ -539,13 +659,13 @@ var SummaryModal = class extends import_obsidian4.Modal {
         text: `${this.options.failedWrites} question(s) could not be saved because the file changed during the session.`
       });
     }
-    new import_obsidian4.Setting(contentEl).addButton((button) => {
+    new import_obsidian5.Setting(contentEl).addButton((button) => {
       button.setButtonText("Done").onClick(() => {
         this.close();
       });
     });
     if (counts.struggling > 0) {
-      new import_obsidian4.Setting(contentEl).addButton((button) => {
+      new import_obsidian5.Setting(contentEl).addButton((button) => {
         button.setButtonText("Review struggling questions").setCta().onClick(() => {
           this.close();
           this.options.onReviewStruggling();
@@ -561,7 +681,7 @@ var SummaryModal = class extends import_obsidian4.Modal {
 
 // src/quizView.ts
 var QUIZ_VIEW_TYPE = "omniscient-quiz-view";
-var QuizView = class extends import_obsidian5.ItemView {
+var QuizView = class extends import_obsidian6.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -588,7 +708,7 @@ var QuizView = class extends import_obsidian5.ItemView {
     return `Omniscient \u2014 ${this.displayName()}`;
   }
   getIcon() {
-    return "target";
+    return OMNISCIENT_ICON;
   }
   displayName() {
     var _a, _b, _c;
@@ -606,7 +726,7 @@ var QuizView = class extends import_obsidian5.ItemView {
       await this.setup();
     } catch (error) {
       console.error("Omniscient: failed to open quiz view", error);
-      new import_obsidian5.Notice("Could not open the quiz view. See the developer console for details.");
+      new import_obsidian6.Notice("Could not open the quiz view. See the developer console for details.");
       this.leaf.detach();
     }
   }
@@ -622,7 +742,7 @@ var QuizView = class extends import_obsidian5.ItemView {
     let foundFiles = 0;
     for (const path of config.filePaths) {
       const abstract = this.app.vault.getAbstractFileByPath(path);
-      if (!(abstract instanceof import_obsidian5.TFile)) {
+      if (!(abstract instanceof import_obsidian6.TFile)) {
         continue;
       }
       try {
@@ -637,13 +757,13 @@ var QuizView = class extends import_obsidian5.ItemView {
       }
     }
     if (foundFiles === 0) {
-      new import_obsidian5.Notice("The quiz file(s) no longer exist.");
+      new import_obsidian6.Notice("The quiz file(s) no longer exist.");
       this.leaf.detach();
       return;
     }
     this.session = new QuizSession(blocks, config);
     if (this.session.total === 0) {
-      new import_obsidian5.Notice("No questions match the selected filters.");
+      new import_obsidian6.Notice("No questions match the selected filters.");
       this.leaf.detach();
       return;
     }
@@ -720,7 +840,7 @@ var QuizView = class extends import_obsidian5.ItemView {
     const metaText = meta.length > 0 ? `Difficulty: ${meta} \xB7 Status: ${status}` : `Status: ${status}`;
     const card = area.createDiv({ cls: "omniscient-question-card" });
     card.createDiv({ cls: "omniscient-question-meta", text: metaText });
-    void import_obsidian5.MarkdownRenderer.render(
+    void import_obsidian6.MarkdownRenderer.render(
       this.app,
       item.block.questionBody,
       card,
@@ -745,7 +865,7 @@ var QuizView = class extends import_obsidian5.ItemView {
       const answerCard = area.createDiv({ cls: "omniscient-answer-card" });
       answerCard.createDiv({ cls: "omniscient-answer-label", text: "Answer" });
       if (item.block.answerBody.length > 0) {
-        void import_obsidian5.MarkdownRenderer.render(
+        void import_obsidian6.MarkdownRenderer.render(
           this.app,
           item.block.answerBody,
           answerCard,
@@ -890,7 +1010,7 @@ var QuizView = class extends import_obsidian5.ItemView {
       return;
     }
     const abstract = this.app.vault.getAbstractFileByPath(path);
-    if (!(abstract instanceof import_obsidian5.TFile)) {
+    if (!(abstract instanceof import_obsidian6.TFile)) {
       return;
     }
     const labels = this.plugin.getDifficultyLabels();
@@ -959,12 +1079,13 @@ var QuizView = class extends import_obsidian5.ItemView {
 };
 
 // src/settings.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
 var DEFAULT_SETTINGS = {
   difficultyLabels: "Easy, Medium, Hard",
   masteredPasses: 2,
   shuffleByDefault: true,
-  history: []
+  history: [],
+  guideSeen: false
 };
 function parseDifficultyLabels(raw) {
   return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
@@ -975,7 +1096,7 @@ function formatSessionLine(record) {
   const date = record.date.slice(0, 10);
   return `${date} \xB7 ${fileName} \xB7 ${record.mastered}/${record.answered} mastered`;
 }
-var OmniscientSettingTab = class extends import_obsidian6.PluginSettingTab {
+var OmniscientSettingTab = class extends import_obsidian7.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -1036,11 +1157,25 @@ var OmniscientSettingTab = class extends import_obsidian6.PluginSettingTab {
         }
       },
       {
+        name: "Usage guide",
+        desc: "Reopen the introduction to the question format and commands.",
+        action: () => {
+          this.plugin.openGuide();
+        }
+      },
+      {
+        name: "Create sample file",
+        desc: "Adds a sample quiz note to your vault to show the question format.",
+        action: () => {
+          void this.plugin.createSampleFile();
+        }
+      },
+      {
         name: "Clear session history",
         desc: "Remove all recorded sessions from this device.",
         action: () => {
           void this.plugin.clearHistory();
-          new import_obsidian6.Notice("Session history cleared.");
+          new import_obsidian7.Notice("Session history cleared.");
           this.update();
         }
       }
@@ -1049,7 +1184,7 @@ var OmniscientSettingTab = class extends import_obsidian6.PluginSettingTab {
 };
 
 // src/setupModal.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 var STATUS_OPTIONS = {
   all: "All questions",
   new: "New",
@@ -1058,7 +1193,7 @@ var STATUS_OPTIONS = {
   "not-mastered": "Not mastered yet",
   mastered: "Mastered"
 };
-var SetupModal = class extends import_obsidian7.Modal {
+var SetupModal = class extends import_obsidian8.Modal {
   constructor(app, plugin, filePaths, questionCount, fileCount, examReady, onStart) {
     super(app);
     this.plugin = plugin;
@@ -1067,7 +1202,8 @@ var SetupModal = class extends import_obsidian7.Modal {
     this.fileCount = fileCount;
     this.examReady = examReady;
     this.onStart = onStart;
-    this.statusFilter = "all";
+    /** Defaults to the book's review loop: only questions not yet exam-ready. */
+    this.statusFilter = "not-mastered";
     this.difficultyFilter = "all";
     this.shuffle = plugin.settings.shuffleByDefault;
     this.difficultyLabels = plugin.getDifficultyLabels();
@@ -1077,14 +1213,14 @@ var SetupModal = class extends import_obsidian7.Modal {
       this.render();
     } catch (error) {
       console.error("Omniscient: failed to render setup dialog", error);
-      new import_obsidian7.Notice("Omniscient setup failed. See the developer console for details.");
+      new import_obsidian8.Notice("Omniscient setup failed. See the developer console for details.");
       this.close();
     }
   }
   render() {
     const { contentEl } = this;
     this.setTitle("Quiz setup");
-    new import_obsidian7.Setting(contentEl).setName("Questions").setDesc(
+    new import_obsidian8.Setting(contentEl).setName("Questions").setDesc(
       `${this.questionCount} questions${this.fileCount > 1 ? ` across ${this.fileCount} files` : ""} \xB7 ${this.examReady} exam-ready`
     ).addDropdown((dropdown) => {
       for (const [value, label] of Object.entries(STATUS_OPTIONS)) {
@@ -1095,7 +1231,7 @@ var SetupModal = class extends import_obsidian7.Modal {
       });
     });
     if (this.difficultyLabels.length > 0) {
-      new import_obsidian7.Setting(contentEl).setName("Difficulty").setDesc("Only include questions with this difficulty").addDropdown((dropdown) => {
+      new import_obsidian8.Setting(contentEl).setName("Difficulty").setDesc("Only include questions with this difficulty").addDropdown((dropdown) => {
         dropdown.addOption("all", "All difficulties");
         for (const label of this.difficultyLabels) {
           dropdown.addOption(label, label);
@@ -1105,12 +1241,12 @@ var SetupModal = class extends import_obsidian7.Modal {
         });
       });
     }
-    new import_obsidian7.Setting(contentEl).setName("Shuffle order").setDesc("Randomize the question order").addToggle((toggle) => {
+    new import_obsidian8.Setting(contentEl).setName("Shuffle order").setDesc("Randomize the question order").addToggle((toggle) => {
       toggle.setValue(this.shuffle).onChange((value) => {
         this.shuffle = value;
       });
     });
-    new import_obsidian7.Setting(contentEl).addButton((button) => {
+    new import_obsidian8.Setting(contentEl).addButton((button) => {
       button.setButtonText("Start session").setCta().onClick(() => {
         this.close();
         this.onStart({
@@ -1166,7 +1302,7 @@ function summarizeBlocks(blocks, masteredPasses) {
 }
 
 // src/main.ts
-var OmniscientPlugin = class extends import_obsidian8.Plugin {
+var OmniscientPlugin = class extends import_obsidian9.Plugin {
   constructor() {
     super(...arguments);
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
@@ -1179,12 +1315,30 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     this.pendingQuizConfigs = [];
     /** Serializes settings writes so concurrent saves cannot interleave. */
     this.saveQueue = Promise.resolve();
+    /** Guards createSampleFile against double-clicks while a create is in flight. */
+    this.sampleFileInFlight = false;
   }
   async onload() {
     try {
       await this.loadPersisted();
+      this.app.workspace.onLayoutReady(() => {
+        if (!this.settings.guideSeen) {
+          this.settings.guideSeen = true;
+          void this.persistSettings();
+          this.openGuide(() => {
+            void this.pickQuizFile();
+          });
+        }
+      });
       this.registerView(QUIZ_VIEW_TYPE, (leaf) => new QuizView(leaf, this));
       this.addSettingTab(new OmniscientSettingTab(this.app, this));
+      this.addCommand({
+        id: "show-guide",
+        name: "Show usage guide",
+        callback: () => {
+          this.openGuide();
+        }
+      });
       this.addCommand({
         id: "start-quiz",
         name: "Start quiz",
@@ -1209,7 +1363,7 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
         name: "Show quiz progress",
         checkCallback: (checking) => this.showProgressCommand(checking)
       });
-      this.addRibbonIcon("target", "Start quiz", () => {
+      this.addRibbonIcon(OMNISCIENT_ICON, "Start quiz", () => {
         const file = this.app.workspace.getActiveFile();
         if (file && file.extension === "md") {
           void this.startQuizFlow(file);
@@ -1219,11 +1373,49 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
       });
     } catch (error) {
       console.error("Omniscient: failed to load", error);
-      new import_obsidian8.Notice("Omniscient failed to load. See the developer console for details.");
+      new import_obsidian9.Notice("Omniscient failed to load. See the developer console for details.");
     }
   }
   getDifficultyLabels() {
     return parseDifficultyLabels(this.settings.difficultyLabels);
+  }
+  /** Opens the in-app usage guide. */
+  openGuide(onStart) {
+    new GuideModal(this.app, {
+      onStart,
+      onCreateSample: () => {
+        void this.createSampleFile();
+      }
+    }).open();
+  }
+  /**
+   * Creates the sample quiz note in the vault root, or opens the
+   * existing one if the user already created it.
+   */
+  async createSampleFile() {
+    if (this.sampleFileInFlight) {
+      return null;
+    }
+    this.sampleFileInFlight = true;
+    try {
+      const path = "Omniscient sample quiz.md";
+      const existing = this.app.vault.getAbstractFileByPath(path);
+      if (existing instanceof import_obsidian9.TFile) {
+        new import_obsidian9.Notice("Sample quiz file already exists.");
+        await this.app.workspace.getLeaf("tab").openFile(existing);
+        return existing;
+      }
+      const file = await this.app.vault.create(path, SAMPLE_QUIZ_CONTENT);
+      await this.app.workspace.getLeaf("tab").openFile(file);
+      new import_obsidian9.Notice("Sample quiz file created.");
+      return file;
+    } catch (error) {
+      console.error("Omniscient: failed to create sample file", error);
+      new import_obsidian9.Notice("Could not create the sample file. See the developer console for details.");
+      return null;
+    } finally {
+      this.sampleFileInFlight = false;
+    }
   }
   // ------------------------------------------------------------------
   // Commands
@@ -1238,7 +1430,7 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
-      new import_obsidian8.Notice("Open a Markdown file first, then run this command.");
+      new import_obsidian9.Notice("Open a Markdown file first, then run this command.");
       return true;
     }
     void this.startQuizFlow(file);
@@ -1259,7 +1451,7 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     const prefix = folder.path === "/" ? "" : `${folder.path}/`;
     const paths = this.app.vault.getMarkdownFiles().filter((file) => file.path.startsWith(prefix)).map((file) => file.path);
     if (paths.length === 0) {
-      new import_obsidian8.Notice("No Markdown files in this folder.");
+      new import_obsidian9.Notice("No Markdown files in this folder.");
       return;
     }
     await this.startQuizFlowFromPaths(paths);
@@ -1276,7 +1468,7 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     let foundFiles = 0;
     for (const path of filePaths) {
       const abstract = this.app.vault.getAbstractFileByPath(path);
-      if (!(abstract instanceof import_obsidian8.TFile)) {
+      if (!(abstract instanceof import_obsidian9.TFile)) {
         continue;
       }
       try {
@@ -1291,11 +1483,11 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
       }
     }
     if (foundFiles === 0) {
-      new import_obsidian8.Notice("Could not read the selected file(s).");
+      new import_obsidian9.Notice("Could not read the selected file(s).");
       return;
     }
     if (blocks.length === 0) {
-      new import_obsidian8.Notice("No questions found in the selected file(s).");
+      new import_obsidian9.Notice("No questions found in the selected file(s).");
       return;
     }
     if (preset) {
@@ -1343,7 +1535,7 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
         this.pendingQuizConfigs.splice(slot, 1);
       }
       console.error("Omniscient: failed to open quiz view", error);
-      new import_obsidian8.Notice("Could not open the quiz view. See the developer console for details.");
+      new import_obsidian9.Notice("Could not open the quiz view. See the developer console for details.");
     }
   }
   async showProgress(file) {
@@ -1351,12 +1543,12 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     try {
       content = await this.app.vault.read(file);
     } catch (e) {
-      new import_obsidian8.Notice("Could not read the selected file.");
+      new import_obsidian9.Notice("Could not read the selected file.");
       return;
     }
     const questions = parseQuestions(content, this.getDifficultyLabels()).questions;
     if (questions.length === 0) {
-      new import_obsidian8.Notice(`No questions found in ${file.basename}.`);
+      new import_obsidian9.Notice(`No questions found in ${file.basename}.`);
       return;
     }
     const summary = summarizeBlocks(questions, this.settings.masteredPasses);
@@ -1368,7 +1560,7 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
-      new import_obsidian8.Notice("Open a Markdown file first, then run this command.");
+      new import_obsidian9.Notice("Open a Markdown file first, then run this command.");
       return true;
     }
     void this.showProgress(file);
@@ -1388,7 +1580,9 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     );
     const matches = results.filter((file) => file !== null);
     if (matches.length === 0) {
-      new import_obsidian8.Notice("No quiz files found in the vault.");
+      new import_obsidian9.Notice(
+        "No quiz files found in the vault. Use the usage guide to create a sample quiz file."
+      );
       return;
     }
     new QuizFilePicker(this.app, this, matches).open();
@@ -1410,11 +1604,13 @@ var OmniscientPlugin = class extends import_obsidian8.Plugin {
     const masteredPasses = typeof raw.masteredPasses === "number" && Number.isFinite(raw.masteredPasses) && raw.masteredPasses >= 1 ? Math.floor(raw.masteredPasses) : DEFAULT_SETTINGS.masteredPasses;
     const shuffleByDefault = typeof raw.shuffleByDefault === "boolean" ? raw.shuffleByDefault : DEFAULT_SETTINGS.shuffleByDefault;
     const history = Array.isArray(raw.history) ? raw.history.filter(isValidSessionRecord) : [];
+    const guideSeen = typeof raw.guideSeen === "boolean" ? raw.guideSeen : DEFAULT_SETTINGS.guideSeen;
     return {
       difficultyLabels,
       masteredPasses,
       shuffleByDefault,
-      history
+      history,
+      guideSeen
     };
   }
   async recordSession(record) {

@@ -14,6 +14,8 @@ export interface OmniscientSettings {
     shuffleByDefault: boolean;
     /** Finished sessions, newest first. */
     history: SessionRecord[];
+    /** Whether the in-app usage guide has been shown at least once. */
+    guideSeen: boolean;
 }
 
 export const DEFAULT_SETTINGS: OmniscientSettings = {
@@ -21,6 +23,7 @@ export const DEFAULT_SETTINGS: OmniscientSettings = {
     masteredPasses: 2,
     shuffleByDefault: true,
     history: [],
+    guideSeen: false,
 };
 
 export function parseDifficultyLabels(raw: string): string[] {
@@ -100,6 +103,20 @@ export class OmniscientSettingTab extends PluginSettingTab {
                     }
                     setting.descEl.empty();
                     setting.descEl.appendChild(frag);
+                },
+            },
+            {
+                name: 'Usage guide',
+                desc: 'Reopen the introduction to the question format and commands.',
+                action: () => {
+                    this.plugin.openGuide();
+                },
+            },
+            {
+                name: 'Create sample file',
+                desc: 'Adds a sample quiz note to your vault to show the question format.',
+                action: () => {
+                    void this.plugin.createSampleFile();
                 },
             },
             {

@@ -3,7 +3,10 @@
 import { Notice, Plugin, TFolder, TFile } from 'obsidian';
 import { QuizFilePicker } from './filePickerModal';
 import { FolderPickModal } from './folderPickModal';
+import { GuideModal } from './guideModal';
+import { OMNISCIENT_ICON } from './icon';
 import { HAS_QUESTIONS_RE, parseQuestions } from './parser';
+import { SAMPLE_QUIZ_CONTENT } from './sampleQuiz';
 import { ProgressModal } from './progressModal';
 import { QUIZ_VIEW_TYPE, QuizView } from './quizView';
 import {
@@ -27,14 +30,35 @@ export default class OmniscientPlugin extends Plugin {
     private pendingQuizConfigs: QuizSessionConfig[] = [];
     /** Serializes settings writes so concurrent saves cannot interleave. */
     private saveQueue: Promise<void> = Promise.resolve();
+    /** Guards createSampleFile against double-clicks while a create is in flight. */
+    private sampleFileInFlight = false;
 
     async onload(): Promise<void> {
         try {
             await this.loadPersisted();
 
+            // First run: show the usage guide once, then never again unless
+            // the user reopens it (command palette or settings).
+            this.app.workspace.onLayoutReady(() => {
+                if (!this.settings.guideSeen) {
+                    this.settings.guideSeen = true;
+                    void this.persistSettings();
+                    this.openGuide(() => {
+                        void this.pickQuizFile();
+                    });
+                }
+            });
+
             this.registerView(QUIZ_VIEW_TYPE, (leaf) => new QuizView(leaf, this));
             this.addSettingTab(new OmniscientSettingTab(this.app, this));
 
+            this.addCommand({
+                id: 'show-guide',
+                name: 'Show usage guide',
+                callback: () => {
+                    this.openGuide();
+                },
+            });
             this.addCommand({
                 id: 'start-quiz',
                 name: 'Start quiz',
@@ -60,7 +84,7 @@ export default class OmniscientPlugin extends Plugin {
                 checkCallback: (checking) => this.showProgressCommand(checking),
             });
 
-            this.addRibbonIcon('target', 'Start quiz', () => {
+            this.addRibbonIcon(OMNISCIENT_ICON, 'Start quiz', () => {
                 const file = this.app.workspace.getActiveFile();
                 if (file && file.extension === 'md') {
                     void this.startQuizFlow(file);
@@ -76,6 +100,46 @@ export default class OmniscientPlugin extends Plugin {
 
     getDifficultyLabels(): string[] {
         return parseDifficultyLabels(this.settings.difficultyLabels);
+    }
+
+    /** Opens the in-app usage guide. */
+    openGuide(onStart?: () => void): void {
+        new GuideModal(this.app, {
+            onStart,
+            onCreateSample: () => {
+                void this.createSampleFile();
+            },
+        }).open();
+    }
+
+    /**
+     * Creates the sample quiz note in the vault root, or opens the
+     * existing one if the user already created it.
+     */
+    async createSampleFile(): Promise<TFile | null> {
+        if (this.sampleFileInFlight) {
+            return null;
+        }
+        this.sampleFileInFlight = true;
+        try {
+            const path = 'Omniscient sample quiz.md';
+            const existing = this.app.vault.getAbstractFileByPath(path);
+            if (existing instanceof TFile) {
+                new Notice('Sample quiz file already exists.');
+                await this.app.workspace.getLeaf('tab').openFile(existing);
+                return existing;
+            }
+            const file = await this.app.vault.create(path, SAMPLE_QUIZ_CONTENT);
+            await this.app.workspace.getLeaf('tab').openFile(file);
+            new Notice('Sample quiz file created.');
+            return file;
+        } catch (error) {
+            console.error('Omniscient: failed to create sample file', error);
+            new Notice('Could not create the sample file. See the developer console for details.');
+            return null;
+        } finally {
+            this.sampleFileInFlight = false;
+        }
     }
 
     // ------------------------------------------------------------------
@@ -260,7 +324,9 @@ export default class OmniscientPlugin extends Plugin {
         );
         const matches = results.filter((file): file is TFile => file !== null);
         if (matches.length === 0) {
-            new Notice('No quiz files found in the vault.');
+            new Notice(
+                'No quiz files found in the vault. Use the usage guide to create a sample quiz file.',
+            );
             return;
         }
         new QuizFilePicker(this.app, this, matches).open();
@@ -298,11 +364,14 @@ export default class OmniscientPlugin extends Plugin {
         const history = Array.isArray(raw.history)
             ? raw.history.filter(isValidSessionRecord)
             : [];
+        const guideSeen =
+            typeof raw.guideSeen === 'boolean' ? raw.guideSeen : DEFAULT_SETTINGS.guideSeen;
         return {
             difficultyLabels,
             masteredPasses,
             shuffleByDefault,
             history,
+            guideSeen,
         };
     }
 

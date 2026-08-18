@@ -4,6 +4,18 @@ All notable changes to Omniscient are documented here. The format is based on [K
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-16
+
+### Changed
+
+- The setup dialog defaults to the **Not mastered yet** status filter, matching the book's review loop (whole set first, then only the gaps until everything is exam-ready)
+
+### Added
+
+- In-app usage guide: shows once on first run and covers the question format, commands, and grading; reopen it any time with the **Show usage guide** command or the Usage guide button in settings
+- **Create sample file** action (in the usage guide and the settings tab) adds a sample quiz note to your vault
+- A brain icon (from Obsidian's built-in icon library) for the ribbon button and the quiz view tab
+
 ## [0.1.1] - 2026-08-16
 
 ### Changed

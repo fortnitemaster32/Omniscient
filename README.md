@@ -92,6 +92,8 @@ Metadata tokens are read from the **end of the line** and rewritten in canonical
 
 ## Usage
 
+New to Omniscient? Run the **Show usage guide** command for a tour of the question format and the commands (it also appears once the first time the plugin loads). Both the guide and the settings tab can create a sample quiz file for you.
+
 Commands (assign hotkeys in Settings → Hotkeys if you want them):
 
 | Command | What it does |
@@ -100,12 +102,13 @@ Commands (assign hotkeys in Settings → Hotkeys if you want them):
 | **Choose quiz file** | Picks any file in the vault that contains questions |
 | **Start quiz from folder** | Runs one session over every Markdown file in a folder (and its subfolders), the mega-problem set across chapters |
 | **Show quiz progress** | Opens a per-file summary: exam-ready, mastered, almost, struggling, new, and counts by difficulty |
+| **Show usage guide** | Reopens the in-app introduction to the question format and commands |
 
-There is also a **ribbon icon** (a target) in the left sidebar that starts a quiz with one click, or lets you pick a file when no file is active.
+There is also a **ribbon icon** (a brain) in the left sidebar that starts a quiz with one click, or lets you pick a file when no file is active.
 
 The setup dialog lets you:
 
-- Filter by status: all / new / struggling / almost there / not mastered yet / mastered
+- Filter by status: all / new / struggling / almost there / not mastered yet / mastered (defaults to **not mastered yet**, so each session shows only what still needs work)
 - Filter by difficulty
 - Toggle shuffling (on by default; never memorize order, only material)
 - See the question count, file count, and how many are exam-ready before you start

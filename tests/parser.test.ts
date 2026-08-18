@@ -18,6 +18,7 @@ import {
     stripQuotePrefix,
 } from '../src/parser';
 import { QuizSession } from '../src/session';
+import { SAMPLE_QUIZ_CONTENT } from '../src/sampleQuiz';
 import type { QuestionBlock, QuizSessionConfig } from '../src/types';
 
 const LABELS = ['Easy', 'Medium', 'Hard'];
@@ -546,6 +547,25 @@ test('look-alike callout types are not quiz delimiters', () => {
     eq(questions.length, 1);
     eq(questions[0]?.questionBody, 'real body');
     eq(questions[0]?.answerBody, 'real answer');
+});
+
+test('the bundled sample quiz parses into three questions', () => {
+    const { questions } = parseQuestions(SAMPLE_QUIZ_CONTENT, LABELS);
+    eq(questions.length, 3);
+    eq(questions[0]?.difficulty, 'Easy');
+    eq(questions[0]?.status, 'Mastered');
+    eq(questions[0]?.passes, 2);
+    eq(questions[0]?.questionBody, 'What is the derivative of x²?');
+    eq(questions[0]?.answerBody, '2x');
+    eq(questions[1]?.difficulty, 'Medium');
+    eq(questions[1]?.status, undefined);
+    eq(questions[1]?.answerBody, 'Do not passively re-read: answer from memory first, then check.');
+    eq(questions[2]?.difficulty, 'Hard');
+    eq(questions[2]?.status, 'Almost');
+    eq(
+        questions[2]?.answerBody,
+        'A large set of practice questions on one topic, worked through with retrieval practice.',
+    );
 });
 
 test('round trip: grade, serialize, re-parse', () => {

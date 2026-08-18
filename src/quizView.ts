@@ -6,6 +6,7 @@
 
 import { ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import type OmniscientPlugin from './main';
+import { OMNISCIENT_ICON } from './icon';
 import { parseQuestions, patchQuestionHeader, serializeHeader } from './parser';
 import { QuizSession } from './session';
 import { SummaryModal } from './summaryModal';
@@ -38,7 +39,7 @@ export class QuizView extends ItemView {
     }
 
     getIcon(): string {
-        return 'target';
+        return OMNISCIENT_ICON;
     }
 
     private displayName(): string {

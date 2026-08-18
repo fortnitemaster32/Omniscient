@@ -1,6 +1,6 @@
 {
   "name": "omniscient",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Quiz-and-recall study sessions from mega problem sets, inspired by How to Be a Straight-A Student.",
   "main": "main.js",
   "author": "amorous shams",

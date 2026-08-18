@@ -15,7 +15,8 @@ const STATUS_OPTIONS: Record<StatusFilter, string> = {
 
 export class SetupModal extends Modal {
     private shuffle: boolean;
-    private statusFilter: StatusFilter = 'all';
+    /** Defaults to the book's review loop: only questions not yet exam-ready. */
+    private statusFilter: StatusFilter = 'not-mastered';
     private difficultyFilter: string = 'all';
     private readonly difficultyLabels: string[];
 
