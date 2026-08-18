@@ -12,7 +12,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Installing
 
-Once listed, Omniscient installs from the community plugin browser. For a manual install, download `omniscient-<version>.zip` from the latest release, extract it, and copy the `omniscient` folder into `<your vault>/.obsidian/plugins/`. Then enable the plugin in Settings → Community plugins and reload Obsidian.
+Omniscient installs from the [community plugin browser](https://community.obsidian.md/plugins/omniscient). For a manual install, download `omniscient-<version>.zip` from the latest release, extract it, and copy the `omniscient` folder into `<your vault>/.obsidian/plugins/`. Then enable the plugin in Settings → Community plugins and reload Obsidian.
 
 ## How it works
 
