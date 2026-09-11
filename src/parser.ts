@@ -161,10 +161,12 @@ export function parseHeader(
 
 /**
  * True when a heading introduces section content: the next line that is
- * not blank and not another heading is a question header. Structural
- * headings still belong to the section tree, but they are kept out of
- * question and answer bodies instead of rendering as stray text at the
- * end of the previous answer.
+ * not blank, not another heading, not a hint callout, and not a thematic
+ * break is a question header. Structural headings still belong to the
+ * section tree, but they are kept out of question and answer bodies
+ * instead of rendering as stray text at the end of the previous answer.
+ * Skipping hints and breaks keeps this classification stable when a hint
+ * is added, edited, or removed.
  */
 function isSectionHeading(
     lines: string[],
@@ -234,15 +236,31 @@ export function stripQuotePrefix(line: string): string {
     return stripped;
 }
 
-/** Joins body lines, dropping leading and trailing blank lines. */
+/**
+ * Joins body lines, dropping blank lines and thematic breaks at the
+ * trailing edge. Trailing separators (`---`, `***`, `___`) are layout,
+ * not content, and hint writes insert before them; ignoring them keeps
+ * the assembled body and the question-body hash stable across hint
+ * writes. Interior breaks stay in the body. Leading blank lines are
+ * dropped as well, matching the previous behaviour.
+ */
 export function assembleBody(lines: string[]): string {
     let start = 0;
     let end = lines.length;
     while (start < end && lines[start].trim().length === 0) {
         start++;
     }
-    while (end > start && lines[end - 1].trim().length === 0) {
-        end--;
+    for (;;) {
+        const before = end;
+        while (end > start && lines[end - 1].trim().length === 0) {
+            end--;
+        }
+        while (end > start && THEMATIC_BREAK_RE.test(lines[end - 1])) {
+            end--;
+        }
+        if (end === before) {
+            break;
+        }
     }
     return lines.slice(start, end).join('\n');
 }

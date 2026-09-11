@@ -830,6 +830,66 @@ test('heading paths survive CRLF files', () => {
     eq(questions[0]?.sectionPath, ['Title', 'A']);
 });
 
+test('a hint before a trailing separator keeps the hash stable', () => {
+    const content = [
+        '> Question 1',
+        'body only',
+        '---',
+        '> Question 2',
+        'second',
+        '> Answer',
+        'ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    const first = questions[0];
+    eq(first?.questionBody, 'body only');
+    const withHint = patchQuestionHint(content, first, 'note', LABELS).content;
+    const reparsed = parseQuestions(withHint, LABELS).questions[0];
+    eq(reparsed?.bodyHash, first?.bodyHash);
+    const graded = patchQuestionHeader(
+        withHint,
+        first,
+        '> Question 1 | Mastered(1)',
+        LABELS,
+    );
+    eq(graded.patched, true);
+    const removed = patchQuestionHint(withHint, reparsed, null, LABELS).content;
+    const reparsedAgain = parseQuestions(removed, LABELS).questions[0];
+    eq(reparsedAgain?.bodyHash, first?.bodyHash);
+});
+
+test('trailing separators are not part of an answer body', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '---',
+        '',
+        '> Question',
+        'second',
+        '> Answer',
+        'ans2',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.answerBody, 'ans');
+    eq(questions[1]?.answerBody, 'ans2');
+});
+
+test('interior separators stay part of the body', () => {
+    const content = [
+        '> Question',
+        'part one',
+        '---',
+        'part two',
+        '> Answer',
+        'ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.questionBody, 'part one\n---\npart two');
+});
+
 test('questions before any heading have an empty section path', () => {
     const { questions } = parseQuestions('> Question\nbody\n> Answer\nans', LABELS);
     eq(questions[0]?.sectionPath, []);

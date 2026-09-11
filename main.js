@@ -269,8 +269,17 @@ function assembleBody(lines) {
   while (start < end && lines[start].trim().length === 0) {
     start++;
   }
-  while (end > start && lines[end - 1].trim().length === 0) {
-    end--;
+  for (; ; ) {
+    const before = end;
+    while (end > start && lines[end - 1].trim().length === 0) {
+      end--;
+    }
+    while (end > start && THEMATIC_BREAK_RE.test(lines[end - 1])) {
+      end--;
+    }
+    if (end === before) {
+      break;
+    }
   }
   return lines.slice(start, end).join("\n");
 }
