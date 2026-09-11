@@ -726,6 +726,110 @@ test('structural headings inside a question region are not body text', () => {
     eq(result.content.split('\n')[0], '> Question | Mastered(1)');
 });
 
+test('hint writes next to a structural heading keep later patches working', () => {
+    const content = [
+        '> Question 1',
+        'body only',
+        '### Next topic',
+        '',
+        '> Question 2',
+        'second',
+        '> Answer',
+        'ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 2);
+    eq(questions[0]?.questionBody, 'body only');
+    const first = questions[0];
+    const withHint = patchQuestionHint(content, first, 'note', LABELS).content;
+    const reparsed = parseQuestions(withHint, LABELS);
+    eq(reparsed.questions.length, 2);
+    eq(reparsed.questions[0]?.hint, 'note');
+    eq(reparsed.questions[0]?.questionBody, 'body only');
+    eq(reparsed.questions[0]?.bodyHash, first?.bodyHash);
+    // A grade write for the block must still locate the question.
+    const graded = patchQuestionHeader(
+        withHint,
+        first,
+        '> Question 1 | Mastered(1)',
+        LABELS,
+    );
+    eq(graded.patched, true);
+    // Removing the hint again must not break writes either.
+    const removed = patchQuestionHint(withHint, reparsed.questions[0], null, LABELS);
+    const again = patchQuestionHeader(
+        removed.content,
+        reparsed.questions[0],
+        '> Question 1 | Mastered(1)',
+        LABELS,
+    );
+    eq(again.patched, true);
+});
+
+test('a hint between a heading and its question is skipped by the lookahead', () => {
+    const content = [
+        '# Title',
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '### Next',
+        '',
+        '> [!Hint]',
+        '> note',
+        '',
+        '> Question',
+        'second',
+        '> Answer',
+        'ans2',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[1]?.sectionPath, ['Title', 'Next']);
+    eq(questions[0]?.answerBody, 'ans');
+});
+
+test('a thematic break between a heading and the next question is skipped', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '### Next',
+        '---',
+        '> Question',
+        'second',
+        '> Answer',
+        'ans2',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 2);
+    eq(questions[1]?.sectionPath, ['Next']);
+});
+
+test('deeper heading levels are tracked and nest', () => {
+    const content = [
+        '#### Four',
+        '> Question',
+        'a',
+        '> Answer',
+        'x',
+        '##### Five',
+        '> Question',
+        'b',
+        '> Answer',
+        'y',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.sectionPath, ['Four']);
+    eq(questions[1]?.sectionPath, ['Four', 'Five']);
+});
+
+test('heading paths survive CRLF files', () => {
+    const content = '# Title\r\n## A\r\n> Question\r\nbody\r\n> Answer\r\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.sectionPath, ['Title', 'A']);
+});
+
 test('questions before any heading have an empty section path', () => {
     const { questions } = parseQuestions('> Question\nbody\n> Answer\nans', LABELS);
     eq(questions[0]?.sectionPath, []);

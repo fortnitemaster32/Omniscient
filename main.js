@@ -226,6 +226,14 @@ function isSectionHeading(lines, start, difficultyLabels) {
     if (lines[i].trim().length === 0 || parseHeading(lines[i]) !== null) {
       continue;
     }
+    const hintRun = readHintRun(lines, i, difficultyLabels);
+    if (hintRun !== null) {
+      i = hintRun.end - 1;
+      continue;
+    }
+    if (THEMATIC_BREAK_RE.test(lines[i])) {
+      continue;
+    }
     const header = parseHeader(lines[i], difficultyLabels);
     return header !== null && header.kind === "question";
   }

@@ -175,6 +175,18 @@ function isSectionHeading(
         if (lines[i].trim().length === 0 || parseHeading(lines[i]) !== null) {
             continue;
         }
+        // Hint callouts can be added, edited, or removed at any time, and
+        // thematic breaks can sit between a heading and the question it
+        // introduces. Skipping both keeps the classification, and with it
+        // the question-body hash, stable across hint writes.
+        const hintRun = readHintRun(lines, i, difficultyLabels);
+        if (hintRun !== null) {
+            i = hintRun.end - 1;
+            continue;
+        }
+        if (THEMATIC_BREAK_RE.test(lines[i])) {
+            continue;
+        }
         const header = parseHeader(lines[i], difficultyLabels);
         return header !== null && header.kind === 'question';
     }
