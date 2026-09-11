@@ -4,8 +4,6 @@ All notable changes to Omniscient are documented here. The format is based on [K
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-09-11
-
 ### Added
 
 - Question numbers in the session view (`Question 7 of 42`), showing each question's position in its file; display only, never written to the note
