@@ -4,6 +4,12 @@ All notable changes to Omniscient are documented here. The format is based on [K
 
 ## [Unreleased]
 
+### Added
+
+- Question numbers in the session view (`Question 7 of 42`), showing each question's position in its file; display only, never written to the note
+- Section filter in the setup dialog: pick any heading or group of headings from a searchable tree with per-section counts, a live question and exam-ready count, and parent headings that include their subheadings; multi-file sessions group sections under each file
+- Per-question hints: add a note from the session view (**Add hint** or `N`) and it stays hidden until you ask for it (**Show hint** or `H`); stored in the file as a `> [!Hint]` callout after the answer and changed or removed with **Edit hint**
+
 ## [0.2.0] - 2026-08-16
 
 ### Changed

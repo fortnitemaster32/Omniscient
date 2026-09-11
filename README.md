@@ -90,6 +90,21 @@ Difficulty is optional and configurable in settings (defaults: `Easy, Medium, Ha
 
 Metadata tokens are read from the **end of the line** and rewritten in canonical order (`Difficulty | Status`). Anything unrecognized in the middle of the line is preserved verbatim, so prose like `> Question: explain X` keeps working.
 
+### Hints
+
+A hint is a note attached to one question, written from the session view with **Add hint** or `N`. It is stored in the file as a callout after the answer:
+
+```markdown
+> [!Success] Answer
+
+The answer is 2x + C.
+
+> [!Hint]
+> Forgot the +C last time.
+```
+
+Hints stay hidden during a session until you press `H` or click **Show hint**, so they remind you of a past mistake without spoiling a fresh attempt. Each question has at most one hint; **Edit hint** (`N`) changes or removes it. Hints are excluded from the detection used to spot mid-session file edits, so grades and hints keep saving normally.
+
 ## Usage
 
 New to Omniscient? Run the **Show usage guide** command for a tour of the question format and the commands (it also appears once the first time the plugin loads). Both the guide and the settings tab can create a sample quiz file for you.
@@ -110,8 +125,9 @@ The setup dialog lets you:
 
 - Filter by status: all / new / struggling / almost there / not mastered yet / mastered (defaults to **not mastered yet**, so each session shows only what still needs work)
 - Filter by difficulty
+- Filter by section: pick any heading or group of headings from a searchable tree with per-section question counts; selecting a parent heading includes its subheadings
 - Toggle shuffling (on by default; never memorize order, only material)
-- See the question count, file count, and how many are exam-ready before you start
+- See the question count, file count, and how many are exam-ready before you start; the count updates live as you change the filters
 
 ### In-session keyboard shortcuts
 
@@ -121,9 +137,13 @@ The setup dialog lets you:
 | `1` | Grade: struggling |
 | `2` | Grade: almost |
 | `3` | Grade: mastered |
+| `H` | Show or hide the hint (opens the hint dialog when there is none) |
+| `N` | Add or edit the hint |
 | `S` | Skip; requeues the question at the end, ungraded |
 | `U` | Undo the last grade (also restores the status in the file) |
 | `Esc` | End the session |
+
+Each question shows its number in the file (`Question 7 of 42`), so even a filtered session tells you where the question lives in the note. Numbering is display only and never written to the file.
 
 Every grade is saved to the file immediately. If you edit the file during a session, the plugin detects it and skips writing to questions that changed. Nothing gets corrupted.
 
@@ -145,11 +165,11 @@ Every finished session is recorded (date, file, counts), including partial ones.
 
 **A grade did not change the file.**
 
-The plugin writes statuses only to questions it can still find unchanged. If you edited a question's text or header during a session, that question is skipped (and counted in the summary) so your edits are never corrupted. Grade it again in the next session.
+The plugin writes statuses only to questions it can still find unchanged. If you edited a question's text or header during a session, that question is skipped (and counted in the summary) so your edits are never corrupted. Grade it again in the next session. The same rule applies to hints: if the question changed, the hint dialog stays open so your text is not lost.
 
 **Questions are missing from a session.**
 
-Check the status filter and difficulty filter in the setup dialog, and that the file uses the format above. Lines indented 4+ spaces are treated as code, and question-like lines inside fenced code blocks are body text.
+Check the status, difficulty, and section filters in the setup dialog, and that the file uses the format above. Lines indented 4+ spaces are treated as code, and question-like lines inside fenced code blocks are body text.
 
 ## Settings
 
