@@ -8,7 +8,8 @@ Copy this file and replace the questions with your own.
 Format: a [!Question] callout holds the question, the following
 [!Success] callout holds its answer. Optional metadata after the
 pipe: a difficulty label and a status (Struggling, Almost, or
-Mastered with its pass count). -->
+Mastered with its pass count). A [!Hint] callout after an answer
+stays hidden during a session until you ask for it. -->
 
 # Omniscient sample quiz
 
@@ -35,4 +36,7 @@ What is a mega-problem set?
 > [!Success] Answer
 
 A large set of practice questions on one topic, worked through with retrieval practice.
+
+> [!Hint]
+> It is one topic at a time, not a mixed practice exam.
 `;

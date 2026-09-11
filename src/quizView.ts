@@ -6,8 +6,14 @@
 
 import { ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf } from 'obsidian';
 import type OmniscientPlugin from './main';
+import { HintModal } from './hintModal';
 import { OMNISCIENT_ICON } from './icon';
-import { parseQuestions, patchQuestionHeader, serializeHeader } from './parser';
+import {
+    parseQuestions,
+    patchQuestionHeader,
+    patchQuestionHint,
+    serializeHeader,
+} from './parser';
 import { QuizSession } from './session';
 import { SummaryModal } from './summaryModal';
 import type { GradeKind, QuestionBlock, QuizSessionConfig } from './types';
@@ -158,7 +164,7 @@ export class QuizView extends ItemView {
         this.contentArea = contentEl.createDiv({ cls: 'omniscient-content' });
         this.hintEl = contentEl.createDiv({ cls: 'omniscient-hint' });
         this.hintEl.setText(
-            'Space or enter reveals · 1 struggling · 2 almost · 3 mastered · s skip · u undo · esc ends',
+            'Space or enter reveals · 1 struggling · 2 almost · 3 mastered · h hint · n edit hint · s skip · u undo · esc ends',
         );
     }
 
@@ -174,6 +180,11 @@ export class QuizView extends ItemView {
         const area = this.contentArea;
         area.empty();
 
+        if (this.lastHintBlock !== item.block) {
+            this.hintVisible = false;
+            this.lastHintBlock = item.block;
+        }
+
         if (this.undoButtonEl) {
             this.undoButtonEl.disabled = !session.hasUndo;
         }
@@ -184,11 +195,18 @@ export class QuizView extends ItemView {
                 ? `Mastered(${item.block.passes})`
                 : item.block.status
             : 'New';
-        const metaText =
-            meta.length > 0 ? `Difficulty: ${meta} · Status: ${status}` : `Status: ${status}`;
+        const metaParts: string[] = [];
+        if ((this.config?.filePaths.length ?? 0) > 1) {
+            metaParts.push(item.block.sourcePath.split('/').pop() ?? item.block.sourcePath);
+        }
+        metaParts.push(`Question ${item.block.ordinal} of ${item.block.fileTotal}`);
+        if (meta.length > 0) {
+            metaParts.push(`Difficulty: ${meta}`);
+        }
+        metaParts.push(`Status: ${status}`);
 
         const card = area.createDiv({ cls: 'omniscient-question-card' });
-        card.createDiv({ cls: 'omniscient-question-meta', text: metaText });
+        card.createDiv({ cls: 'omniscient-question-meta', text: metaParts.join(' · ') });
         void MarkdownRenderer.render(
             this.app,
             item.block.questionBody,
@@ -196,6 +214,18 @@ export class QuizView extends ItemView {
             item.block.sourcePath,
             this,
         );
+
+        if (this.hintVisible && item.block.hint !== undefined) {
+            const hintCard = area.createDiv({ cls: 'omniscient-hint-card' });
+            hintCard.createDiv({ cls: 'omniscient-hint-card-label', text: 'Hint' });
+            void MarkdownRenderer.render(
+                this.app,
+                item.block.hint,
+                hintCard,
+                item.block.sourcePath,
+                this,
+            );
+        }
 
         const actions = area.createDiv({ cls: 'omniscient-actions' });
 
@@ -206,6 +236,7 @@ export class QuizView extends ItemView {
                 attr: { 'aria-label': 'Reveal the answer' },
             });
             reveal.addEventListener('click', () => this.reveal());
+            this.addHintButtons(actions);
             const skip = actions.createEl('button', {
                 cls: 'omniscient-grade-btn',
                 text: 'Skip',
@@ -246,6 +277,7 @@ export class QuizView extends ItemView {
                 }
                 button.addEventListener('click', () => this.grade(def.grade));
             }
+            this.addHintButtons(actions);
             const skip = actions.createEl('button', {
                 cls: 'omniscient-grade-btn',
                 text: 'Skip',
@@ -300,6 +332,16 @@ export class QuizView extends ItemView {
             }
             return;
         }
+        if (key === 'h') {
+            event.preventDefault();
+            this.toggleHint();
+            return;
+        }
+        if (key === 'n') {
+            event.preventDefault();
+            this.openHintModal();
+            return;
+        }
         if (key === 's') {
             event.preventDefault();
             this.skip();
@@ -319,6 +361,105 @@ export class QuizView extends ItemView {
     private reveal(): void {
         this.revealed = true;
         this.renderQuestion();
+    }
+
+    /** Adds the hint toggle (when a hint exists) and the add/edit button. */
+    private addHintButtons(actions: HTMLElement): void {
+        const item = this.session?.current;
+        if (!item) {
+            return;
+        }
+        if (item.block.hint !== undefined) {
+            const label = this.hintVisible ? 'Hide hint' : 'Show hint';
+            const hintButton = actions.createEl('button', {
+                cls: 'omniscient-grade-btn',
+                text: label,
+                attr: { 'aria-label': label },
+            });
+            hintButton.addEventListener('click', () => this.toggleHint());
+        }
+        const hasHint = item.block.hint !== undefined;
+        const noteButton = actions.createEl('button', {
+            cls: 'omniscient-grade-btn',
+            text: hasHint ? 'Edit hint' : 'Add hint',
+            attr: { 'aria-label': hasHint ? 'Edit the hint' : 'Add a hint' },
+        });
+        noteButton.addEventListener('click', () => this.openHintModal());
+    }
+
+    private toggleHint(): void {
+        const item = this.session?.current;
+        if (!item) {
+            return;
+        }
+        if (item.block.hint === undefined) {
+            this.openHintModal();
+            return;
+        }
+        this.hintVisible = !this.hintVisible;
+        this.renderQuestion();
+    }
+
+    private openHintModal(): void {
+        const item = this.session?.current;
+        if (!item) {
+            return;
+        }
+        const block = item.block;
+        new HintModal(this.app, {
+            initialText: block.hint ?? '',
+            hasHint: block.hint !== undefined,
+            onSubmit: async (text) => {
+                const ok = await this.writeHint(block, text);
+                if (!ok) {
+                    new Notice(
+                        'Could not save the hint: the question changed in the file. Your text was kept.',
+                    );
+                }
+                return ok;
+            },
+        }).open();
+    }
+
+    /**
+     * Writes a hint through the same queue as grade writes so the two never
+     * interleave. Returns false when the block can no longer be located.
+     */
+    private async writeHint(block: QuestionBlock, text: string | null): Promise<boolean> {
+        const path = block.sourcePath || this.config?.filePaths[0];
+        if (!path) {
+            return false;
+        }
+        const abstract = this.app.vault.getAbstractFileByPath(path);
+        if (!(abstract instanceof TFile)) {
+            return false;
+        }
+        const labels = this.plugin.getDifficultyLabels();
+        let patched = false;
+        this.writeQueue = this.writeQueue
+            .then(async () => {
+                await this.app.vault.process(abstract, (content) => {
+                    const result = patchQuestionHint(content, block, text, labels);
+                    patched = result.patched;
+                    return result.content;
+                });
+            })
+            .catch((error) => {
+                console.error('Omniscient: failed to save question hint', error);
+                patched = false;
+            });
+        await this.writeQueue;
+        if (!patched) {
+            this.failedWrites++;
+            return false;
+        }
+        const trimmed = text === null ? '' : text.trim();
+        block.hint = trimmed.length > 0 ? text ?? undefined : undefined;
+        if (block.hint === undefined) {
+            this.hintVisible = false;
+        }
+        this.renderQuestion();
+        return true;
     }
 
     private skip(): void {
@@ -457,4 +598,8 @@ export class QuizView extends ItemView {
     private undoButtonEl: HTMLButtonElement | null = null;
     private progressTextEl: HTMLElement | null = null;
     private progressFillEl: HTMLElement | null = null;
+    /** Whether the current question's hint is revealed (always resets). */
+    private hintVisible = false;
+    /** Block the hint visibility belongs to, so it resets per question. */
+    private lastHintBlock: QuestionBlock | null = null;
 }

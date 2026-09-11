@@ -13,6 +13,7 @@ import {
     parseHeader,
     parseQuestions,
     patchQuestionHeader,
+    patchQuestionHint,
     serializeHeader,
     splitTokens,
     stripQuotePrefix,
@@ -85,11 +86,15 @@ function test(name: string, fn: () => void): void {
 function makeBlock(overrides: Partial<QuestionBlock>): QuestionBlock {
     return {
         headerIndex: 0,
+        ordinal: 1,
+        fileTotal: 1,
         headerLine: '> Question',
         stem: '> Question',
         sourcePath: '',
+        sectionPath: [],
         questionBody: 'body',
         answerBody: 'answer',
+        hint: undefined,
         difficulty: undefined,
         status: undefined,
         passes: 0,
@@ -105,6 +110,7 @@ function makeConfig(overrides: Partial<QuizSessionConfig>): QuizSessionConfig {
         statusFilter: 'all',
         difficultyFilter: 'all',
         masteredPasses: 2,
+        headingFilter: undefined,
         ...overrides,
     };
 }
@@ -566,6 +572,7 @@ test('the bundled sample quiz parses into three questions', () => {
         questions[2]?.answerBody,
         'A large set of practice questions on one topic, worked through with retrieval practice.',
     );
+    eq(questions[2]?.hint, 'It is one topic at a time, not a mixed practice exam.');
 });
 
 test('round trip: grade, serialize, re-parse', () => {
@@ -581,6 +588,306 @@ test('round trip: grade, serialize, re-parse', () => {
     eq(reparsed.questions[0]?.passes, 1);
     eq(reparsed.questions[0]?.difficulty, 'Hard');
     eq(reparsed.questions[0]?.questionBody, 'body');
+});
+
+// ---------------------------------------------------------------------------
+// Numbering and sections
+// ---------------------------------------------------------------------------
+
+test('questions are numbered in file order', () => {
+    const content = [
+        '> Question',
+        'one',
+        '> Answer',
+        'a',
+        '',
+        '> Question',
+        'two',
+        '> Answer',
+        'b',
+        '',
+        '> Question',
+        'three',
+        '> Answer',
+        'c',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.map((q) => q.ordinal), [1, 2, 3]);
+    eq(questions.map((q) => q.fileTotal), [3, 3, 3]);
+});
+
+test('heading levels build section paths and reset correctly', () => {
+    const content = [
+        '# Title',
+        '## Limits',
+        '> Question',
+        'a',
+        '> Answer',
+        'x',
+        '### Worked examples',
+        '> Question',
+        'b',
+        '> Answer',
+        'y',
+        '## Derivatives',
+        '> Question',
+        'c',
+        '> Answer',
+        'z',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.sectionPath, ['Title', 'Limits']);
+    eq(questions[1]?.sectionPath, ['Title', 'Limits', 'Worked examples']);
+    eq(questions[2]?.sectionPath, ['Title', 'Derivatives']);
+});
+
+test('a heading deeper than the current stack nests under it', () => {
+    const content = ['# A', '### C', '> Question', 'body', '> Answer', 'ans'].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.sectionPath, ['A', 'C']);
+});
+
+test('questions before any heading have an empty section path', () => {
+    const { questions } = parseQuestions('> Question\nbody\n> Answer\nans', LABELS);
+    eq(questions[0]?.sectionPath, []);
+});
+
+test('headings are ignored inside fences and blockquotes', () => {
+    const content = [
+        '```',
+        '# Fenced',
+        '```',
+        '> # Quoted',
+        '## Real',
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.sectionPath, ['Real']);
+});
+
+// ---------------------------------------------------------------------------
+// Hints
+// ---------------------------------------------------------------------------
+
+test('extracts a hint callout after the answer', () => {
+    const content = [
+        '> Question | Hard',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> Forgot the +C last time.',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.hint, 'Forgot the +C last time.');
+    eq(questions[0]?.questionBody, 'body');
+    eq(questions[0]?.answerBody, 'ans');
+});
+
+test('extracts a multiline hint and keeps it out of the bodies', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> [!Hint]',
+        '> First line.',
+        '>',
+        '> Second paragraph.',
+        '> Answer',
+        'ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.hint, 'First line.\n\nSecond paragraph.');
+    eq(questions[0]?.questionBody, 'body');
+    eq(questions[0]?.answerBody, 'ans');
+});
+
+test('hint type is matched exactly and case-insensitively', () => {
+    const content = ['> Question', 'body', '> [!hint]', '> note', '> Answer', 'ans'].join('\n');
+    eq(parseQuestions(content, LABELS).questions[0]?.hint, 'note');
+    const lookalike = [
+        '> Question',
+        'body',
+        '> [!hintful]',
+        '> not a hint',
+        '> Answer',
+        'ans',
+    ].join('\n');
+    eq(parseQuestions(lookalike, LABELS).questions[0]?.hint, undefined);
+});
+
+test('hints inside fences are body text', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> ```',
+        '> [!Hint]',
+        '> not a hint',
+        '> ```',
+        '> Answer',
+        'ans',
+    ].join('\n');
+    eq(parseQuestions(content, LABELS).questions[0]?.hint, undefined);
+});
+
+test('hint edits do not change the question body hash', () => {
+    const without = ['> Question', 'body', '> Answer', 'ans'].join('\n');
+    const withHint = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> note',
+    ].join('\n');
+    const a = parseQuestions(without, LABELS).questions[0];
+    const b = parseQuestions(withHint, LABELS).questions[0];
+    eq(a?.bodyHash, b?.bodyHash);
+});
+
+test('patchQuestionHint inserts a hint before a separator', () => {
+    const content = [
+        '> Question | Hard',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '---',
+        '> Question',
+        'next',
+        '> Answer',
+        'next ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    const result = patchQuestionHint(content, questions[0], 'Forgot the +C.', LABELS);
+    eq(result.patched, true);
+    eq(result.content.split('\n'), [
+        '> Question | Hard',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> Forgot the +C.',
+        '',
+        '---',
+        '> Question',
+        'next',
+        '> Answer',
+        'next ans',
+    ]);
+});
+
+test('patchQuestionHint replaces an existing hint in place', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> old note',
+        '',
+        '> Question',
+        'next',
+        '> Answer',
+        'next ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.hint, 'old note');
+    const result = patchQuestionHint(content, questions[0], 'new note', LABELS);
+    eq(result.patched, true);
+    eq(result.content.split('\n'), [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> new note',
+        '',
+        '> Question',
+        'next',
+        '> Answer',
+        'next ans',
+    ]);
+});
+
+test('patchQuestionHint is idempotent for the same text', () => {
+    const content = '> Question\nbody\n> Answer\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    const once = patchQuestionHint(content, questions[0], 'note', LABELS);
+    const twice = patchQuestionHint(once.content, questions[0], 'note', LABELS);
+    eq(twice.content, once.content);
+});
+
+test('patchQuestionHint removes a hint and tidies blank lines', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> note',
+        '',
+        '> Question',
+        'next',
+        '> Answer',
+        'next ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    const result = patchQuestionHint(content, questions[0], null, LABELS);
+    eq(result.patched, true);
+    eq(result.content.split('\n'), [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> Question',
+        'next',
+        '> Answer',
+        'next ans',
+    ]);
+});
+
+test('patchQuestionHint preserves CRLF', () => {
+    const content = '> Question\r\nbody\r\n> Answer\r\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    const result = patchQuestionHint(content, questions[0], 'note', LABELS);
+    eq(result.content, '> Question\r\nbody\r\n> Answer\r\nans\r\n\r\n> [!Hint]\r\n> note');
+});
+
+test('patchQuestionHint is a no-op when the block changed', () => {
+    const content = '> Question\nbody\n> Answer\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    const edited = content.replace('body', 'edited');
+    const result = patchQuestionHint(edited, questions[0], 'note', LABELS);
+    eq(result.patched, false);
+    eq(result.content, edited);
+});
+
+test('round trip: add a hint, then still patch the grade', () => {
+    const content = '> Question | Hard\nbody\n> Answer\nans';
+    const parsed = parseQuestions(content, LABELS);
+    const block = parsed.questions[0];
+    const withHint = patchQuestionHint(content, block, 'watch the sign', LABELS).content;
+    const reparsed = parseQuestions(withHint, LABELS);
+    eq(reparsed.questions[0]?.hint, 'watch the sign');
+    eq(reparsed.questions[0]?.questionBody, 'body');
+    const regraded = patchQuestionHeader(
+        withHint,
+        reparsed.questions[0],
+        '> Question | Hard | Mastered(1)',
+        LABELS,
+    );
+    eq(regraded.patched, true);
+    eq(regraded.content.split('\n')[0], '> Question | Hard | Mastered(1)');
 });
 
 // ---------------------------------------------------------------------------
@@ -654,6 +961,42 @@ test('difficulty filter works', () => {
     const session = new QuizSession([hard, easy, none], makeConfig({ difficultyFilter: 'Hard' }));
     eq(session.total, 1);
     eq(session.current?.block.questionBody, 'h');
+});
+
+test('heading filter selects exact sections', () => {
+    const limits = makeBlock({ questionBody: 'l', sectionPath: ['Title', 'Limits'] });
+    const integrals = makeBlock({ questionBody: 'i', sectionPath: ['Title', 'Integrals'] });
+    const intro = makeBlock({ questionBody: 'n', sectionPath: [] });
+    const blocks = [limits, integrals, intro];
+    const onlyLimits = new QuizSession(
+        blocks,
+        makeConfig({ headingFilter: [{ filePath: '', sectionPath: ['Title', 'Limits'] }] }),
+    );
+    eq(onlyLimits.total, 1);
+    eq(onlyLimits.current?.block.questionBody, 'l');
+    const two = new QuizSession(
+        blocks,
+        makeConfig({
+            headingFilter: [
+                { filePath: '', sectionPath: ['Title', 'Limits'] },
+                { filePath: '', sectionPath: [] },
+            ],
+        }),
+    );
+    eq(two.total, 2);
+    eq(new QuizSession(blocks, makeConfig({ headingFilter: undefined })).total, 3);
+    eq(new QuizSession(blocks, makeConfig({ headingFilter: [] })).total, 0);
+});
+
+test('heading refs are scoped to their file', () => {
+    const a = makeBlock({ questionBody: 'a', sourcePath: 'a.md', sectionPath: ['Topic'] });
+    const b = makeBlock({ questionBody: 'b', sourcePath: 'b.md', sectionPath: ['Topic'] });
+    const session = new QuizSession(
+        [a, b],
+        makeConfig({ headingFilter: [{ filePath: 'a.md', sectionPath: ['Topic'] }] }),
+    );
+    eq(session.total, 1);
+    eq(session.current?.block.questionBody, 'a');
 });
 
 test('skip requeues the current question ungraded', () => {

@@ -24,7 +24,7 @@ __export(main_exports, {
   default: () => OmniscientPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian9 = require("obsidian");
+var import_obsidian10 = require("obsidian");
 
 // src/filePickerModal.ts
 var import_obsidian = require("obsidian");
@@ -113,15 +113,17 @@ var GuideModal = class extends import_obsidian3.Modal {
     const formatList = contentEl.createEl("ul", { cls: "omniscient-guide-list" });
     this.listItem(formatList, "[!Question] starts a question; [!Success] (or [!answer]) starts its answer.");
     this.listItem(formatList, "Optional metadata after the pipe: a difficulty label and a status like Mastered(2).");
+    this.listItem(formatList, "An optional > [!Hint] callout after an answer holds a note for yourself; it stays hidden until you ask for it.");
     this.listItem(formatList, "Questions inside code fences, or indented by four or more spaces, are ignored.");
     contentEl.createEl("h4", { cls: "omniscient-guide-heading", text: "Start a session" });
     const startList = contentEl.createEl("ul", { cls: "omniscient-guide-list" });
     this.listItem(startList, "Run Start quiz for the current note, Choose quiz file, or Start quiz from folder from the command palette.");
     this.listItem(startList, "The ribbon icon (a brain) starts a quiz for the active note, or opens the file picker.");
-    this.listItem(startList, "In the setup dialog you can filter by status and difficulty and toggle shuffling (it defaults to Not mastered yet, so each session shows only the gaps).");
+    this.listItem(startList, "In the setup dialog you can filter by status, difficulty, and section, and toggle shuffling (it defaults to Not mastered yet, so each session shows only the gaps).");
     contentEl.createEl("h4", { cls: "omniscient-guide-heading", text: "During the session" });
     const sessionList = contentEl.createEl("ul", { cls: "omniscient-guide-list" });
     this.listItem(sessionList, "Space reveals the answer; grade yourself with Struggling, Almost, or Mastered (keys 1, 2 and 3).");
+    this.listItem(sessionList, "Each question shows its number in the file, and hints stay hidden until you ask: H shows one, N adds or edits it.");
     this.listItem(sessionList, "Every grade is saved to the file immediately, and Undo restores it both in the session and in the note.");
     this.listItem(sessionList, "Finishing early is normal: press Esc or End session whenever you run out of time.");
     contentEl.createEl("h4", { cls: "omniscient-guide-heading", text: "Exam-ready" });
@@ -160,6 +162,10 @@ var STATUS_RE = /^(struggling|almost|mastered)\s*(?:\(\s*(\d+)\s*\))?$/i;
 var HAS_QUESTIONS_RE = /^ {0,3}>\s*(?:\[!\s*)?question\b/im;
 var CALLOUT_RE = /^( {0,3}>\s*)\[!([^\]]*)\]([^\n]*)$/i;
 var PLAIN_RE = /^( {0,3}>\s*)(question|answer)\b([^\n]*)$/i;
+var ATX_HEADING_RE = /^ {0,3}(#{1,6})(.*)$/;
+var HINT_START_RE = /^ {0,3}>\s*\[!\s*hint\s*\]/i;
+var QUOTE_LINE_RE = /^ {0,3}>/;
+var THEMATIC_BREAK_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
 function isStatusToken(token) {
   var _a;
   const m = STATUS_RE.exec(token.trim());
@@ -215,6 +221,19 @@ function parseHeader(line, difficultyLabels) {
   const lineStem = stem.length > 0 ? `${plain[1]}${plain[2]} ${stem}` : `${plain[1]}${plain[2]}`;
   return { kind, lineStem, tokens };
 }
+function parseHeading(line) {
+  const m = ATX_HEADING_RE.exec(line);
+  if (!m) {
+    return null;
+  }
+  const rest = m[2];
+  if (rest.length > 0 && !/^\s/.test(rest)) {
+    return null;
+  }
+  let text = rest.trim();
+  text = text.replace(/\s+#+\s*$/, "").trim();
+  return { level: m[1].length, text };
+}
 function stripQuotePrefix(line) {
   const m = /^ {0,3}>\s?/.exec(line);
   if (!m) {
@@ -236,6 +255,20 @@ function assembleBody(lines) {
     end--;
   }
   return lines.slice(start, end).join("\n");
+}
+function readHintRun(lines, start, difficultyLabels) {
+  if (!HINT_START_RE.test(lines[start])) {
+    return null;
+  }
+  let end = start + 1;
+  while (end < lines.length && QUOTE_LINE_RE.test(lines[end]) && parseHeader(lines[end], difficultyLabels) === null) {
+    end++;
+  }
+  const body = [];
+  for (let i = start + 1; i < end; i++) {
+    body.push(stripQuotePrefix(lines[i]));
+  }
+  return { start, end, text: assembleBody(body) };
 }
 function hashString(s) {
   let h = 5381;
@@ -273,6 +306,7 @@ function parseQuestions(content, difficultyLabels) {
   let collectingQuestion = false;
   let body = [];
   let inFence = false;
+  const stack = [];
   const finalizeBody = () => {
     if (current === null) {
       return;
@@ -296,6 +330,21 @@ function parseQuestions(content, difficultyLabels) {
       }
       continue;
     }
+    const heading = parseHeading(lines[i]);
+    if (heading !== null) {
+      stack.length = Math.min(stack.length, heading.level - 1);
+      stack.push(heading.text);
+    }
+    const hintRun = readHintRun(lines, i, difficultyLabels);
+    if (hintRun !== null) {
+      if (current !== null) {
+        current.hint = current.hint === void 0 ? hintRun.text : `${current.hint}
+
+${hintRun.text}`;
+      }
+      i = hintRun.end - 1;
+      continue;
+    }
     const header = parseHeader(lines[i], difficultyLabels);
     if (header === null) {
       if (current !== null) {
@@ -310,11 +359,15 @@ function parseQuestions(content, difficultyLabels) {
       const meta = extractMetadata(header.tokens, difficultyLabels);
       current = {
         headerIndex: i,
+        ordinal: 0,
+        fileTotal: 0,
         headerLine: lines[i],
         stem: header.lineStem,
         sourcePath: "",
+        sectionPath: [...stack],
         questionBody: "",
         answerBody: "",
+        hint: void 0,
         difficulty: meta.difficulty,
         status: meta.status,
         passes: meta.passes,
@@ -333,6 +386,11 @@ function parseQuestions(content, difficultyLabels) {
   }
   if (current !== null) {
     finalizeBody();
+  }
+  for (let i = 0; i < questions.length; i++) {
+    const question = questions[i];
+    question.ordinal = i + 1;
+    question.fileTotal = questions.length;
   }
   return { eol, questions };
 }
@@ -358,6 +416,11 @@ function bodyHashAt(lines, headerIdx, difficultyLabels) {
       body.push(stripped);
       continue;
     }
+    const hintRun = readHintRun(lines, i, difficultyLabels);
+    if (hintRun !== null) {
+      i = hintRun.end - 1;
+      continue;
+    }
     const h = parseHeader(lines[i], difficultyLabels);
     if (h !== null) {
       break;
@@ -366,9 +429,7 @@ function bodyHashAt(lines, headerIdx, difficultyLabels) {
   }
   return hashString(assembleBody(body));
 }
-function patchQuestionHeader(content, block, newLine, difficultyLabels) {
-  const eol = content.includes("\r\n") ? "\r\n" : "\n";
-  const lines = content.split(/\r?\n/);
+function locateBlockHeader(lines, block, difficultyLabels) {
   const needle = block.headerLine.trim();
   let best = null;
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -385,10 +446,111 @@ function patchQuestionHeader(content, block, newLine, difficultyLabels) {
       best = i;
     }
   }
+  return best;
+}
+function patchQuestionHeader(content, block, newLine, difficultyLabels) {
+  const eol = content.includes("\r\n") ? "\r\n" : "\n";
+  const lines = content.split(/\r?\n/);
+  const best = locateBlockHeader(lines, block, difficultyLabels);
   if (best === null) {
     return { content, patched: false };
   }
   lines[best] = newLine;
+  return { content: lines.join(eol), patched: true };
+}
+function findBlockEnd(lines, headerIdx, difficultyLabels) {
+  let inFence = false;
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const stripped = stripQuotePrefix(lines[i]);
+    if (FENCE_RE.test(stripped)) {
+      inFence = !inFence;
+    }
+    if (inFence) {
+      continue;
+    }
+    const header = parseHeader(lines[i], difficultyLabels);
+    if (header !== null && header.kind === "question") {
+      return i;
+    }
+  }
+  return lines.length;
+}
+function hintLinesFor(text) {
+  const out = ["> [!Hint]"];
+  for (const line of text.split(/\r?\n/)) {
+    out.push(line.trim().length === 0 ? ">" : `> ${line}`);
+  }
+  return out;
+}
+function isBlankLine(line) {
+  return line === void 0 || line.trim().length === 0;
+}
+function tidyAfterRemoval(lines, index) {
+  if (index >= lines.length) {
+    if (index > 0 && lines[index - 1].trim().length === 0) {
+      lines.splice(index - 1, 1);
+    }
+    return;
+  }
+  if (index > 0 && lines[index - 1].trim().length === 0 && lines[index].trim().length === 0) {
+    lines.splice(index, 1);
+  }
+}
+function patchQuestionHint(content, block, hint, difficultyLabels) {
+  const eol = content.includes("\r\n") ? "\r\n" : "\n";
+  const lines = content.split(/\r?\n/);
+  const headerIdx = locateBlockHeader(lines, block, difficultyLabels);
+  if (headerIdx === null) {
+    return { content, patched: false };
+  }
+  const end = findBlockEnd(lines, headerIdx, difficultyLabels);
+  const runs = [];
+  let inFence = false;
+  for (let i = headerIdx + 1; i < end; i++) {
+    const stripped = stripQuotePrefix(lines[i]);
+    if (FENCE_RE.test(stripped)) {
+      inFence = !inFence;
+    }
+    if (inFence) {
+      continue;
+    }
+    const run = readHintRun(lines, i, difficultyLabels);
+    if (run !== null) {
+      runs.push(run);
+      i = run.end - 1;
+    }
+  }
+  if (hint === null || hint.trim().length === 0) {
+    for (let i = runs.length - 1; i >= 0; i--) {
+      const run = runs[i];
+      lines.splice(run.start, run.end - run.start);
+      tidyAfterRemoval(lines, run.start);
+    }
+    return { content: lines.join(eol), patched: true };
+  }
+  const fresh = hintLinesFor(hint);
+  for (let i = runs.length - 1; i >= 1; i--) {
+    const run = runs[i];
+    lines.splice(run.start, run.end - run.start);
+    tidyAfterRemoval(lines, run.start);
+  }
+  const first = runs[0];
+  if (first !== void 0) {
+    lines.splice(first.start, first.end - first.start, ...fresh);
+    return { content: lines.join(eol), patched: true };
+  }
+  let insertAt = end;
+  while (insertAt > headerIdx + 1 && (isBlankLine(lines[insertAt - 1]) || THEMATIC_BREAK_RE.test(lines[insertAt - 1]))) {
+    insertAt--;
+  }
+  const insertion = [...fresh];
+  if (!isBlankLine(lines[insertAt - 1])) {
+    insertion.unshift("");
+  }
+  if (insertAt < lines.length && !isBlankLine(lines[insertAt])) {
+    insertion.push("");
+  }
+  lines.splice(insertAt, 0, ...insertion);
   return { content: lines.join(eol), patched: true };
 }
 
@@ -398,7 +560,8 @@ Copy this file and replace the questions with your own.
 Format: a [!Question] callout holds the question, the following
 [!Success] callout holds its answer. Optional metadata after the
 pipe: a difficulty label and a status (Struggling, Almost, or
-Mastered with its pass count). -->
+Mastered with its pass count). A [!Hint] callout after an answer
+stays hidden during a session until you ask for it. -->
 
 # Omniscient sample quiz
 
@@ -425,6 +588,9 @@ What is a mega-problem set?
 > [!Success] Answer
 
 A large set of practice questions on one topic, worked through with retrieval practice.
+
+> [!Hint]
+> It is one topic at a time, not a mixed practice exam.
 `;
 
 // src/progressModal.ts
@@ -479,11 +645,103 @@ var ProgressModal = class extends import_obsidian4.Modal {
 };
 
 // src/quizView.ts
-var import_obsidian6 = require("obsidian");
+var import_obsidian7 = require("obsidian");
+
+// src/hintModal.ts
+var import_obsidian5 = require("obsidian");
+var HintModal = class extends import_obsidian5.Modal {
+  constructor(app, options) {
+    super(app);
+    this.options = options;
+    this.textarea = null;
+    this.saving = false;
+  }
+  onOpen() {
+    this.render();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+  render() {
+    const { contentEl } = this;
+    this.setTitle(this.options.hasHint ? "Edit hint" : "Add hint");
+    contentEl.createDiv({
+      cls: "omniscient-hint-modal-help",
+      text: "Hidden during the session until you ask for it. Use it to note what you missed last time."
+    });
+    this.textarea = contentEl.createEl("textarea", {
+      cls: "omniscient-hint-textarea",
+      attr: {
+        rows: "4",
+        "aria-label": "Hint text",
+        placeholder: "What tripped you up last time?"
+      }
+    });
+    this.textarea.value = this.options.initialText;
+    const buttons = contentEl.createDiv({ cls: "omniscient-modal-buttons" });
+    if (this.options.hasHint) {
+      const remove = buttons.createEl("button", { text: "Remove hint" });
+      remove.addClass("mod-warning");
+      remove.addEventListener("click", () => {
+        void this.submit(null, remove);
+      });
+    }
+    const cancel = buttons.createEl("button", { text: "Cancel" });
+    cancel.addEventListener("click", () => {
+      this.close();
+    });
+    const save = buttons.createEl("button", { text: "Save" });
+    save.addClass("mod-cta");
+    save.addEventListener("click", () => {
+      var _a, _b;
+      void this.submit((_b = (_a = this.textarea) == null ? void 0 : _a.value) != null ? _b : "", save);
+    });
+    this.textarea.addEventListener("keydown", (event) => {
+      var _a, _b;
+      if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        void this.submit((_b = (_a = this.textarea) == null ? void 0 : _a.value) != null ? _b : "", save);
+      }
+    });
+    window.setTimeout(() => {
+      var _a;
+      return (_a = this.textarea) == null ? void 0 : _a.focus();
+    }, 0);
+  }
+  async submit(text, button) {
+    if (this.saving) {
+      return;
+    }
+    const value = text === null ? null : text.trim();
+    if (value !== null && value.length === 0 && !this.options.hasHint) {
+      this.close();
+      return;
+    }
+    this.saving = true;
+    button.disabled = true;
+    const ok = await this.options.onSubmit(value);
+    this.saving = false;
+    button.disabled = false;
+    if (ok) {
+      this.close();
+    }
+  }
+};
 
 // src/session.ts
+function sameSectionPath(a, b) {
+  return a.length === b.length && a.every((part, index) => part === b[index]);
+}
 function matchesFilter(block, config) {
   var _a;
+  if (config.headingFilter !== void 0) {
+    const inSelectedSection = config.headingFilter.some(
+      (ref) => ref.filePath === block.sourcePath && sameSectionPath(ref.sectionPath, block.sectionPath)
+    );
+    if (!inSelectedSection) {
+      return false;
+    }
+  }
   if (config.difficultyFilter !== "all" && ((_a = block.difficulty) != null ? _a : "").toLowerCase() !== config.difficultyFilter.toLowerCase()) {
     return false;
   }
@@ -619,8 +877,8 @@ var QuizSession = class {
 };
 
 // src/summaryModal.ts
-var import_obsidian5 = require("obsidian");
-var SummaryModal = class extends import_obsidian5.Modal {
+var import_obsidian6 = require("obsidian");
+var SummaryModal = class extends import_obsidian6.Modal {
   constructor(app, options) {
     super(app);
     this.options = options;
@@ -659,13 +917,13 @@ var SummaryModal = class extends import_obsidian5.Modal {
         text: `${this.options.failedWrites} question(s) could not be saved because the file changed during the session.`
       });
     }
-    new import_obsidian5.Setting(contentEl).addButton((button) => {
+    new import_obsidian6.Setting(contentEl).addButton((button) => {
       button.setButtonText("Done").onClick(() => {
         this.close();
       });
     });
     if (counts.struggling > 0) {
-      new import_obsidian5.Setting(contentEl).addButton((button) => {
+      new import_obsidian6.Setting(contentEl).addButton((button) => {
         button.setButtonText("Review struggling questions").setCta().onClick(() => {
           this.close();
           this.options.onReviewStruggling();
@@ -681,7 +939,7 @@ var SummaryModal = class extends import_obsidian5.Modal {
 
 // src/quizView.ts
 var QUIZ_VIEW_TYPE = "omniscient-quiz-view";
-var QuizView = class extends import_obsidian6.ItemView {
+var QuizView = class extends import_obsidian7.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -700,6 +958,10 @@ var QuizView = class extends import_obsidian6.ItemView {
     this.undoButtonEl = null;
     this.progressTextEl = null;
     this.progressFillEl = null;
+    /** Whether the current question's hint is revealed (always resets). */
+    this.hintVisible = false;
+    /** Block the hint visibility belongs to, so it resets per question. */
+    this.lastHintBlock = null;
   }
   getViewType() {
     return QUIZ_VIEW_TYPE;
@@ -726,7 +988,7 @@ var QuizView = class extends import_obsidian6.ItemView {
       await this.setup();
     } catch (error) {
       console.error("Omniscient: failed to open quiz view", error);
-      new import_obsidian6.Notice("Could not open the quiz view. See the developer console for details.");
+      new import_obsidian7.Notice("Could not open the quiz view. See the developer console for details.");
       this.leaf.detach();
     }
   }
@@ -742,7 +1004,7 @@ var QuizView = class extends import_obsidian6.ItemView {
     let foundFiles = 0;
     for (const path of config.filePaths) {
       const abstract = this.app.vault.getAbstractFileByPath(path);
-      if (!(abstract instanceof import_obsidian6.TFile)) {
+      if (!(abstract instanceof import_obsidian7.TFile)) {
         continue;
       }
       try {
@@ -757,13 +1019,13 @@ var QuizView = class extends import_obsidian6.ItemView {
       }
     }
     if (foundFiles === 0) {
-      new import_obsidian6.Notice("The quiz file(s) no longer exist.");
+      new import_obsidian7.Notice("The quiz file(s) no longer exist.");
       this.leaf.detach();
       return;
     }
     this.session = new QuizSession(blocks, config);
     if (this.session.total === 0) {
-      new import_obsidian6.Notice("No questions match the selected filters.");
+      new import_obsidian7.Notice("No questions match the selected filters.");
       this.leaf.detach();
       return;
     }
@@ -817,11 +1079,11 @@ var QuizView = class extends import_obsidian6.ItemView {
     this.contentArea = contentEl.createDiv({ cls: "omniscient-content" });
     this.hintEl = contentEl.createDiv({ cls: "omniscient-hint" });
     this.hintEl.setText(
-      "Space or enter reveals \xB7 1 struggling \xB7 2 almost \xB7 3 mastered \xB7 s skip \xB7 u undo \xB7 esc ends"
+      "Space or enter reveals \xB7 1 struggling \xB7 2 almost \xB7 3 mastered \xB7 h hint \xB7 n edit hint \xB7 s skip \xB7 u undo \xB7 esc ends"
     );
   }
   renderQuestion() {
-    var _a;
+    var _a, _b, _c, _d;
     const session = this.session;
     if (!session || !this.contentArea) {
       return;
@@ -832,21 +1094,44 @@ var QuizView = class extends import_obsidian6.ItemView {
     }
     const area = this.contentArea;
     area.empty();
+    if (this.lastHintBlock !== item.block) {
+      this.hintVisible = false;
+      this.lastHintBlock = item.block;
+    }
     if (this.undoButtonEl) {
       this.undoButtonEl.disabled = !session.hasUndo;
     }
     const meta = (_a = item.block.difficulty) != null ? _a : "";
     const status = item.block.status ? item.block.status === "Mastered" ? `Mastered(${item.block.passes})` : item.block.status : "New";
-    const metaText = meta.length > 0 ? `Difficulty: ${meta} \xB7 Status: ${status}` : `Status: ${status}`;
+    const metaParts = [];
+    if (((_c = (_b = this.config) == null ? void 0 : _b.filePaths.length) != null ? _c : 0) > 1) {
+      metaParts.push((_d = item.block.sourcePath.split("/").pop()) != null ? _d : item.block.sourcePath);
+    }
+    metaParts.push(`Question ${item.block.ordinal} of ${item.block.fileTotal}`);
+    if (meta.length > 0) {
+      metaParts.push(`Difficulty: ${meta}`);
+    }
+    metaParts.push(`Status: ${status}`);
     const card = area.createDiv({ cls: "omniscient-question-card" });
-    card.createDiv({ cls: "omniscient-question-meta", text: metaText });
-    void import_obsidian6.MarkdownRenderer.render(
+    card.createDiv({ cls: "omniscient-question-meta", text: metaParts.join(" \xB7 ") });
+    void import_obsidian7.MarkdownRenderer.render(
       this.app,
       item.block.questionBody,
       card,
       item.block.sourcePath,
       this
     );
+    if (this.hintVisible && item.block.hint !== void 0) {
+      const hintCard = area.createDiv({ cls: "omniscient-hint-card" });
+      hintCard.createDiv({ cls: "omniscient-hint-card-label", text: "Hint" });
+      void import_obsidian7.MarkdownRenderer.render(
+        this.app,
+        item.block.hint,
+        hintCard,
+        item.block.sourcePath,
+        this
+      );
+    }
     const actions = area.createDiv({ cls: "omniscient-actions" });
     if (!this.revealed) {
       const reveal = actions.createEl("button", {
@@ -855,6 +1140,7 @@ var QuizView = class extends import_obsidian6.ItemView {
         attr: { "aria-label": "Reveal the answer" }
       });
       reveal.addEventListener("click", () => this.reveal());
+      this.addHintButtons(actions);
       const skip = actions.createEl("button", {
         cls: "omniscient-grade-btn",
         text: "Skip",
@@ -865,7 +1151,7 @@ var QuizView = class extends import_obsidian6.ItemView {
       const answerCard = area.createDiv({ cls: "omniscient-answer-card" });
       answerCard.createDiv({ cls: "omniscient-answer-label", text: "Answer" });
       if (item.block.answerBody.length > 0) {
-        void import_obsidian6.MarkdownRenderer.render(
+        void import_obsidian7.MarkdownRenderer.render(
           this.app,
           item.block.answerBody,
           answerCard,
@@ -894,6 +1180,7 @@ var QuizView = class extends import_obsidian6.ItemView {
         }
         button.addEventListener("click", () => this.grade(def.grade));
       }
+      this.addHintButtons(actions);
       const skip = actions.createEl("button", {
         cls: "omniscient-grade-btn",
         text: "Skip",
@@ -944,6 +1231,16 @@ var QuizView = class extends import_obsidian6.ItemView {
       }
       return;
     }
+    if (key === "h") {
+      event.preventDefault();
+      this.toggleHint();
+      return;
+    }
+    if (key === "n") {
+      event.preventDefault();
+      this.openHintModal();
+      return;
+    }
     if (key === "s") {
       event.preventDefault();
       this.skip();
@@ -962,6 +1259,103 @@ var QuizView = class extends import_obsidian6.ItemView {
   reveal() {
     this.revealed = true;
     this.renderQuestion();
+  }
+  /** Adds the hint toggle (when a hint exists) and the add/edit button. */
+  addHintButtons(actions) {
+    var _a;
+    const item = (_a = this.session) == null ? void 0 : _a.current;
+    if (!item) {
+      return;
+    }
+    if (item.block.hint !== void 0) {
+      const label = this.hintVisible ? "Hide hint" : "Show hint";
+      const hintButton = actions.createEl("button", {
+        cls: "omniscient-grade-btn",
+        text: label,
+        attr: { "aria-label": label }
+      });
+      hintButton.addEventListener("click", () => this.toggleHint());
+    }
+    const hasHint = item.block.hint !== void 0;
+    const noteButton = actions.createEl("button", {
+      cls: "omniscient-grade-btn",
+      text: hasHint ? "Edit hint" : "Add hint",
+      attr: { "aria-label": hasHint ? "Edit the hint" : "Add a hint" }
+    });
+    noteButton.addEventListener("click", () => this.openHintModal());
+  }
+  toggleHint() {
+    var _a;
+    const item = (_a = this.session) == null ? void 0 : _a.current;
+    if (!item) {
+      return;
+    }
+    if (item.block.hint === void 0) {
+      this.openHintModal();
+      return;
+    }
+    this.hintVisible = !this.hintVisible;
+    this.renderQuestion();
+  }
+  openHintModal() {
+    var _a, _b;
+    const item = (_a = this.session) == null ? void 0 : _a.current;
+    if (!item) {
+      return;
+    }
+    const block = item.block;
+    new HintModal(this.app, {
+      initialText: (_b = block.hint) != null ? _b : "",
+      hasHint: block.hint !== void 0,
+      onSubmit: async (text) => {
+        const ok = await this.writeHint(block, text);
+        if (!ok) {
+          new import_obsidian7.Notice(
+            "Could not save the hint: the question changed in the file. Your text was kept."
+          );
+        }
+        return ok;
+      }
+    }).open();
+  }
+  /**
+   * Writes a hint through the same queue as grade writes so the two never
+   * interleave. Returns false when the block can no longer be located.
+   */
+  async writeHint(block, text) {
+    var _a;
+    const path = block.sourcePath || ((_a = this.config) == null ? void 0 : _a.filePaths[0]);
+    if (!path) {
+      return false;
+    }
+    const abstract = this.app.vault.getAbstractFileByPath(path);
+    if (!(abstract instanceof import_obsidian7.TFile)) {
+      return false;
+    }
+    const labels = this.plugin.getDifficultyLabels();
+    let patched = false;
+    this.writeQueue = this.writeQueue.then(async () => {
+      await this.app.vault.process(abstract, (content) => {
+        const result = patchQuestionHint(content, block, text, labels);
+        patched = result.patched;
+        return result.content;
+      });
+    }).catch((error) => {
+      console.error("Omniscient: failed to save question hint", error);
+      patched = false;
+    });
+    await this.writeQueue;
+    if (!patched) {
+      this.failedWrites++;
+      return false;
+    }
+    const trimmed = text === null ? "" : text.trim();
+    block.hint = trimmed.length > 0 ? text != null ? text : void 0 : void 0;
+    if (block.hint === void 0) {
+      this.hintVisible = false;
+    }
+    this.renderQuestion();
+    return true;
   }
   skip() {
     const session = this.session;
@@ -1010,7 +1404,7 @@ var QuizView = class extends import_obsidian6.ItemView {
       return;
     }
     const abstract = this.app.vault.getAbstractFileByPath(path);
-    if (!(abstract instanceof import_obsidian6.TFile)) {
+    if (!(abstract instanceof import_obsidian7.TFile)) {
       return;
     }
     const labels = this.plugin.getDifficultyLabels();
@@ -1079,7 +1473,7 @@ var QuizView = class extends import_obsidian6.ItemView {
 };
 
 // src/settings.ts
-var import_obsidian7 = require("obsidian");
+var import_obsidian8 = require("obsidian");
 var DEFAULT_SETTINGS = {
   difficultyLabels: "Easy, Medium, Hard",
   masteredPasses: 2,
@@ -1096,7 +1490,7 @@ function formatSessionLine(record) {
   const date = record.date.slice(0, 10);
   return `${date} \xB7 ${fileName} \xB7 ${record.mastered}/${record.answered} mastered`;
 }
-var OmniscientSettingTab = class extends import_obsidian7.PluginSettingTab {
+var OmniscientSettingTab = class extends import_obsidian8.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -1175,7 +1569,7 @@ var OmniscientSettingTab = class extends import_obsidian7.PluginSettingTab {
         desc: "Remove all recorded sessions from this device.",
         action: () => {
           void this.plugin.clearHistory();
-          new import_obsidian7.Notice("Session history cleared.");
+          new import_obsidian8.Notice("Session history cleared.");
           this.update();
         }
       }
@@ -1184,85 +1578,7 @@ var OmniscientSettingTab = class extends import_obsidian7.PluginSettingTab {
 };
 
 // src/setupModal.ts
-var import_obsidian8 = require("obsidian");
-var STATUS_OPTIONS = {
-  all: "All questions",
-  new: "New",
-  struggling: "Struggling",
-  almost: "Almost there",
-  "not-mastered": "Not mastered yet",
-  mastered: "Mastered"
-};
-var SetupModal = class extends import_obsidian8.Modal {
-  constructor(app, plugin, filePaths, questionCount, fileCount, examReady, onStart) {
-    super(app);
-    this.plugin = plugin;
-    this.filePaths = filePaths;
-    this.questionCount = questionCount;
-    this.fileCount = fileCount;
-    this.examReady = examReady;
-    this.onStart = onStart;
-    /** Defaults to the book's review loop: only questions not yet exam-ready. */
-    this.statusFilter = "not-mastered";
-    this.difficultyFilter = "all";
-    this.shuffle = plugin.settings.shuffleByDefault;
-    this.difficultyLabels = plugin.getDifficultyLabels();
-  }
-  onOpen() {
-    try {
-      this.render();
-    } catch (error) {
-      console.error("Omniscient: failed to render setup dialog", error);
-      new import_obsidian8.Notice("Omniscient setup failed. See the developer console for details.");
-      this.close();
-    }
-  }
-  render() {
-    const { contentEl } = this;
-    this.setTitle("Quiz setup");
-    new import_obsidian8.Setting(contentEl).setName("Questions").setDesc(
-      `${this.questionCount} questions${this.fileCount > 1 ? ` across ${this.fileCount} files` : ""} \xB7 ${this.examReady} exam-ready`
-    ).addDropdown((dropdown) => {
-      for (const [value, label] of Object.entries(STATUS_OPTIONS)) {
-        dropdown.addOption(value, label);
-      }
-      dropdown.setValue(this.statusFilter).onChange((value) => {
-        this.statusFilter = value;
-      });
-    });
-    if (this.difficultyLabels.length > 0) {
-      new import_obsidian8.Setting(contentEl).setName("Difficulty").setDesc("Only include questions with this difficulty").addDropdown((dropdown) => {
-        dropdown.addOption("all", "All difficulties");
-        for (const label of this.difficultyLabels) {
-          dropdown.addOption(label, label);
-        }
-        dropdown.setValue(this.difficultyFilter).onChange((value) => {
-          this.difficultyFilter = value;
-        });
-      });
-    }
-    new import_obsidian8.Setting(contentEl).setName("Shuffle order").setDesc("Randomize the question order").addToggle((toggle) => {
-      toggle.setValue(this.shuffle).onChange((value) => {
-        this.shuffle = value;
-      });
-    });
-    new import_obsidian8.Setting(contentEl).addButton((button) => {
-      button.setButtonText("Start session").setCta().onClick(() => {
-        this.close();
-        this.onStart({
-          filePaths: this.filePaths,
-          shuffle: this.shuffle,
-          statusFilter: this.statusFilter,
-          difficultyFilter: this.difficultyFilter,
-          masteredPasses: this.plugin.settings.masteredPasses
-        });
-      });
-    });
-  }
-  onClose() {
-    this.contentEl.empty();
-  }
-};
+var import_obsidian9 = require("obsidian");
 
 // src/stats.ts
 function summarizeBlocks(blocks, masteredPasses) {
@@ -1301,8 +1617,387 @@ function summarizeBlocks(blocks, masteredPasses) {
   return summary;
 }
 
+// src/setupModal.ts
+var STATUS_OPTIONS = {
+  all: "All questions",
+  new: "New",
+  struggling: "Struggling",
+  almost: "Almost there",
+  "not-mastered": "Not mastered yet",
+  mastered: "Mastered"
+};
+function sectionKey(filePath, sectionPath) {
+  return JSON.stringify([filePath, ...sectionPath]);
+}
+var SetupModal = class extends import_obsidian9.Modal {
+  constructor(app, plugin, filePaths, blocks, onStart) {
+    super(app);
+    this.plugin = plugin;
+    this.filePaths = filePaths;
+    this.blocks = blocks;
+    this.onStart = onStart;
+    /** Defaults to the book's review loop: only questions not yet exam-ready. */
+    this.statusFilter = "not-mastered";
+    this.difficultyFilter = "all";
+    this.refByKey = /* @__PURE__ */ new Map();
+    this.selected = /* @__PURE__ */ new Set();
+    this.searchQuery = "";
+    this.questionsSetting = null;
+    this.treeEl = null;
+    this.startButton = null;
+    this.shuffle = plugin.settings.shuffleByDefault;
+    this.difficultyLabels = plugin.getDifficultyLabels();
+    this.roots = this.buildSectionTree();
+    for (const node of this.allNodes(this.roots)) {
+      if (!node.isRoot) {
+        this.selected.add(sectionKey(node.filePath, node.sectionPath));
+        this.refByKey.set(sectionKey(node.filePath, node.sectionPath), {
+          filePath: node.filePath,
+          sectionPath: node.sectionPath
+        });
+      }
+    }
+    this.hasSections = this.allNodes(this.roots).some(
+      (node) => node.sectionPath.length > 0
+    );
+  }
+  onOpen() {
+    try {
+      this.render();
+    } catch (error) {
+      console.error("Omniscient: failed to render setup dialog", error);
+      new import_obsidian9.Notice("Omniscient setup failed. See the developer console for details.");
+      this.close();
+    }
+  }
+  // ------------------------------------------------------------------
+  // Rendering
+  // ------------------------------------------------------------------
+  render() {
+    const { contentEl } = this;
+    this.setTitle("Quiz setup");
+    this.questionsSetting = new import_obsidian9.Setting(contentEl).setName("Questions").addDropdown((dropdown) => {
+      for (const [value, label] of Object.entries(STATUS_OPTIONS)) {
+        dropdown.addOption(value, label);
+      }
+      dropdown.setValue(this.statusFilter).onChange((value) => {
+        this.statusFilter = value;
+        this.refreshCounts();
+      });
+    });
+    if (this.difficultyLabels.length > 0) {
+      new import_obsidian9.Setting(contentEl).setName("Difficulty").setDesc("Only include questions with this difficulty").addDropdown((dropdown) => {
+        dropdown.addOption("all", "All difficulties");
+        for (const label of this.difficultyLabels) {
+          dropdown.addOption(label, label);
+        }
+        dropdown.setValue(this.difficultyFilter).onChange((value) => {
+          this.difficultyFilter = value;
+          this.refreshCounts();
+        });
+      });
+    }
+    if (this.hasSections) {
+      this.renderSections(contentEl);
+    }
+    new import_obsidian9.Setting(contentEl).setName("Shuffle order").setDesc("Randomize the question order").addToggle((toggle) => {
+      toggle.setValue(this.shuffle).onChange((value) => {
+        this.shuffle = value;
+      });
+    });
+    new import_obsidian9.Setting(contentEl).addButton((button) => {
+      this.startButton = button.buttonEl;
+      button.setButtonText("Start session").setCta().onClick(() => {
+        if (this.filteredBlocks().length === 0) {
+          return;
+        }
+        this.close();
+        this.onStart({
+          filePaths: this.filePaths,
+          shuffle: this.shuffle,
+          statusFilter: this.statusFilter,
+          difficultyFilter: this.difficultyFilter,
+          masteredPasses: this.plugin.settings.masteredPasses,
+          headingFilter: this.selectedRefs()
+        });
+      });
+    });
+    this.refreshCounts();
+  }
+  renderSections(contentEl) {
+    new import_obsidian9.Setting(contentEl).setName("Sections").setDesc("Only include questions under the selected headings").addButton((button) => {
+      button.setButtonText("Select all").onClick(() => {
+        this.selected.clear();
+        for (const node of this.allNodes(this.roots)) {
+          if (!node.isRoot) {
+            this.selected.add(sectionKey(node.filePath, node.sectionPath));
+          }
+        }
+        this.refreshTree();
+        this.refreshCounts();
+      });
+    }).addButton((button) => {
+      button.setButtonText("Clear").onClick(() => {
+        this.selected.clear();
+        this.refreshTree();
+        this.refreshCounts();
+      });
+    });
+    const search = contentEl.createEl("input", {
+      cls: "omniscient-section-search",
+      attr: {
+        type: "search",
+        placeholder: "Filter sections",
+        "aria-label": "Filter sections"
+      }
+    });
+    search.addEventListener("input", () => {
+      this.searchQuery = search.value.trim().toLowerCase();
+      this.refreshTree();
+    });
+    this.treeEl = contentEl.createDiv({ cls: "omniscient-section-tree" });
+    this.refreshTree();
+  }
+  refreshTree() {
+    const tree = this.treeEl;
+    if (tree === null) {
+      return;
+    }
+    tree.empty();
+    const visible = this.searchQuery.length > 0 ? this.visibleKeys(this.searchQuery) : null;
+    const walk = (nodes, depth) => {
+      for (const node of nodes) {
+        const key = sectionKey(node.filePath, node.sectionPath);
+        if (visible !== null && !visible.has(key)) {
+          continue;
+        }
+        const row = tree.createDiv({ cls: "omniscient-section-row" });
+        row.style.paddingLeft = `${depth * 16}px`;
+        const state = this.nodeState(node);
+        const box = row.createEl("input", {
+          attr: {
+            type: "checkbox",
+            "aria-label": `${node.label} (${node.count} questions)`
+          }
+        });
+        box.checked = state === "on";
+        box.indeterminate = state === "partial";
+        box.addEventListener("change", () => {
+          this.setSubtree(node, box.checked);
+          this.refreshTree();
+          this.refreshCounts();
+        });
+        row.createDiv({
+          cls: node.isRoot ? "omniscient-section-label omniscient-section-root" : "omniscient-section-label",
+          text: node.label
+        });
+        row.createDiv({
+          cls: "omniscient-section-count",
+          text: String(node.count)
+        });
+        walk(node.children, depth + 1);
+      }
+    };
+    walk(this.roots, 0);
+  }
+  refreshCounts() {
+    const filtered = this.filteredBlocks();
+    if (this.questionsSetting === null) {
+      return;
+    }
+    if (filtered.length === 0) {
+      this.questionsSetting.setDesc("No questions match the selected filters.");
+    } else {
+      const fileCount = new Set(filtered.map((block) => block.sourcePath)).size;
+      const examReady = summarizeBlocks(
+        filtered,
+        this.plugin.settings.masteredPasses
+      ).examReady;
+      const across = fileCount > 1 ? ` across ${fileCount} files` : "";
+      this.questionsSetting.setDesc(
+        `${filtered.length} questions${across} \xB7 ${examReady} exam-ready`
+      );
+    }
+    if (this.startButton !== null) {
+      this.startButton.disabled = filtered.length === 0;
+    }
+  }
+  // ------------------------------------------------------------------
+  // Section tree data
+  // ------------------------------------------------------------------
+  allNodes(nodes) {
+    const out = [];
+    for (const node of nodes) {
+      out.push(node, ...this.allNodes(node.children));
+    }
+    return out;
+  }
+  buildSectionTree() {
+    var _a;
+    const roots = [];
+    const multiFile = this.filePaths.length > 1;
+    for (const filePath of this.filePaths) {
+      const fileBlocks = this.blocks.filter((block) => block.sourcePath === filePath);
+      if (fileBlocks.length === 0) {
+        continue;
+      }
+      const fileRoot = {
+        filePath,
+        sectionPath: [],
+        label: (_a = filePath.split("/").pop()) != null ? _a : filePath,
+        count: fileBlocks.length,
+        children: [],
+        isRoot: true
+      };
+      const nodes = /* @__PURE__ */ new Map();
+      for (const block of fileBlocks) {
+        if (block.sectionPath.length === 0) {
+          const key = sectionKey(filePath, []);
+          let node = nodes.get(key);
+          if (node === void 0) {
+            node = {
+              filePath,
+              sectionPath: [],
+              label: "(no heading)",
+              count: 0,
+              children: [],
+              isRoot: false
+            };
+            nodes.set(key, node);
+            fileRoot.children.push(node);
+          }
+          node.count++;
+          continue;
+        }
+        let parent = fileRoot;
+        for (let depth = 0; depth < block.sectionPath.length; depth++) {
+          const path = block.sectionPath.slice(0, depth + 1);
+          const key = sectionKey(filePath, path);
+          let node = nodes.get(key);
+          if (node === void 0) {
+            node = {
+              filePath,
+              sectionPath: path,
+              label: block.sectionPath[depth],
+              count: 0,
+              children: [],
+              isRoot: false
+            };
+            nodes.set(key, node);
+            parent.children.push(node);
+          }
+          node.count++;
+          parent = node;
+        }
+      }
+      if (multiFile) {
+        roots.push(fileRoot);
+      } else {
+        roots.push(...fileRoot.children);
+      }
+    }
+    return roots;
+  }
+  /** Keys of every selectable node in a subtree (file roots are not selectable). */
+  subtreeKeys(node) {
+    const keys = [];
+    if (!node.isRoot) {
+      keys.push(sectionKey(node.filePath, node.sectionPath));
+    }
+    for (const child of node.children) {
+      keys.push(...this.subtreeKeys(child));
+    }
+    return keys;
+  }
+  nodeState(node) {
+    const keys = this.subtreeKeys(node);
+    let on = 0;
+    for (const key of keys) {
+      if (this.selected.has(key)) {
+        on++;
+      }
+    }
+    if (on === 0) {
+      return "off";
+    }
+    return on === keys.length ? "on" : "partial";
+  }
+  setSubtree(node, checked) {
+    if (!node.isRoot) {
+      const key = sectionKey(node.filePath, node.sectionPath);
+      if (checked) {
+        this.selected.add(key);
+      } else {
+        this.selected.delete(key);
+      }
+    }
+    for (const child of node.children) {
+      this.setSubtree(child, checked);
+    }
+  }
+  visibleKeys(query) {
+    const visible = /* @__PURE__ */ new Set();
+    const markSubtree = (node) => {
+      visible.add(sectionKey(node.filePath, node.sectionPath));
+      for (const child of node.children) {
+        markSubtree(child);
+      }
+    };
+    const walk = (node) => {
+      const self = node.label.toLowerCase().includes(query);
+      let any = self;
+      for (const child of node.children) {
+        if (walk(child)) {
+          any = true;
+        }
+      }
+      if (self) {
+        markSubtree(node);
+      } else if (any) {
+        visible.add(sectionKey(node.filePath, node.sectionPath));
+      }
+      return any;
+    };
+    for (const root of this.roots) {
+      walk(root);
+    }
+    return visible;
+  }
+  // ------------------------------------------------------------------
+  // Filtering
+  // ------------------------------------------------------------------
+  selectedRefs() {
+    const selectable = this.allNodes(this.roots).filter((node) => !node.isRoot);
+    if (this.selected.size === selectable.length) {
+      return void 0;
+    }
+    const refs = [];
+    for (const key of this.selected) {
+      const ref = this.refByKey.get(key);
+      if (ref !== void 0) {
+        refs.push(ref);
+      }
+    }
+    return refs;
+  }
+  filteredBlocks() {
+    const config = {
+      filePaths: this.filePaths,
+      shuffle: false,
+      statusFilter: this.statusFilter,
+      difficultyFilter: this.difficultyFilter,
+      masteredPasses: this.plugin.settings.masteredPasses,
+      headingFilter: this.selectedRefs()
+    };
+    return this.blocks.filter((block) => matchesFilter(block, config));
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+
 // src/main.ts
-var OmniscientPlugin = class extends import_obsidian9.Plugin {
+var OmniscientPlugin = class extends import_obsidian10.Plugin {
   constructor() {
     super(...arguments);
     this.settings = Object.assign({}, DEFAULT_SETTINGS);
@@ -1373,7 +2068,7 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
       });
     } catch (error) {
       console.error("Omniscient: failed to load", error);
-      new import_obsidian9.Notice("Omniscient failed to load. See the developer console for details.");
+      new import_obsidian10.Notice("Omniscient failed to load. See the developer console for details.");
     }
   }
   getDifficultyLabels() {
@@ -1400,18 +2095,18 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
     try {
       const path = "Omniscient sample quiz.md";
       const existing = this.app.vault.getAbstractFileByPath(path);
-      if (existing instanceof import_obsidian9.TFile) {
-        new import_obsidian9.Notice("Sample quiz file already exists.");
+      if (existing instanceof import_obsidian10.TFile) {
+        new import_obsidian10.Notice("Sample quiz file already exists.");
         await this.app.workspace.getLeaf("tab").openFile(existing);
         return existing;
       }
       const file = await this.app.vault.create(path, SAMPLE_QUIZ_CONTENT);
       await this.app.workspace.getLeaf("tab").openFile(file);
-      new import_obsidian9.Notice("Sample quiz file created.");
+      new import_obsidian10.Notice("Sample quiz file created.");
       return file;
     } catch (error) {
       console.error("Omniscient: failed to create sample file", error);
-      new import_obsidian9.Notice("Could not create the sample file. See the developer console for details.");
+      new import_obsidian10.Notice("Could not create the sample file. See the developer console for details.");
       return null;
     } finally {
       this.sampleFileInFlight = false;
@@ -1430,7 +2125,7 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
     }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
-      new import_obsidian9.Notice("Open a Markdown file first, then run this command.");
+      new import_obsidian10.Notice("Open a Markdown file first, then run this command.");
       return true;
     }
     void this.startQuizFlow(file);
@@ -1451,7 +2146,7 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
     const prefix = folder.path === "/" ? "" : `${folder.path}/`;
     const paths = this.app.vault.getMarkdownFiles().filter((file) => file.path.startsWith(prefix)).map((file) => file.path);
     if (paths.length === 0) {
-      new import_obsidian9.Notice("No Markdown files in this folder.");
+      new import_obsidian10.Notice("No Markdown files in this folder.");
       return;
     }
     await this.startQuizFlowFromPaths(paths);
@@ -1468,7 +2163,7 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
     let foundFiles = 0;
     for (const path of filePaths) {
       const abstract = this.app.vault.getAbstractFileByPath(path);
-      if (!(abstract instanceof import_obsidian9.TFile)) {
+      if (!(abstract instanceof import_obsidian10.TFile)) {
         continue;
       }
       try {
@@ -1483,11 +2178,11 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
       }
     }
     if (foundFiles === 0) {
-      new import_obsidian9.Notice("Could not read the selected file(s).");
+      new import_obsidian10.Notice("Could not read the selected file(s).");
       return;
     }
     if (blocks.length === 0) {
-      new import_obsidian9.Notice("No questions found in the selected file(s).");
+      new import_obsidian10.Notice("No questions found in the selected file(s).");
       return;
     }
     if (preset) {
@@ -1497,23 +2192,15 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
         statusFilter: "all",
         difficultyFilter: "all",
         masteredPasses: this.settings.masteredPasses,
+        headingFilter: void 0,
         ...preset
       };
       void this.openQuizView(config);
       return;
     }
-    const summary = summarizeBlocks(blocks, this.settings.masteredPasses);
-    new SetupModal(
-      this.app,
-      this,
-      filePaths,
-      blocks.length,
-      foundFiles,
-      summary.examReady,
-      (config) => {
-        void this.openQuizView(config);
-      }
-    ).open();
+    new SetupModal(this.app, this, filePaths, blocks, (config) => {
+      void this.openQuizView(config);
+    }).open();
   }
   /**
    * Returns the config for a quiz view that is about to open, in FIFO
@@ -1535,7 +2222,7 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
         this.pendingQuizConfigs.splice(slot, 1);
       }
       console.error("Omniscient: failed to open quiz view", error);
-      new import_obsidian9.Notice("Could not open the quiz view. See the developer console for details.");
+      new import_obsidian10.Notice("Could not open the quiz view. See the developer console for details.");
     }
   }
   async showProgress(file) {
@@ -1543,12 +2230,12 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
     try {
       content = await this.app.vault.read(file);
     } catch (e) {
-      new import_obsidian9.Notice("Could not read the selected file.");
+      new import_obsidian10.Notice("Could not read the selected file.");
       return;
     }
     const questions = parseQuestions(content, this.getDifficultyLabels()).questions;
     if (questions.length === 0) {
-      new import_obsidian9.Notice(`No questions found in ${file.basename}.`);
+      new import_obsidian10.Notice(`No questions found in ${file.basename}.`);
       return;
     }
     const summary = summarizeBlocks(questions, this.settings.masteredPasses);
@@ -1560,7 +2247,7 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
     }
     const file = this.app.workspace.getActiveFile();
     if (!file || file.extension !== "md") {
-      new import_obsidian9.Notice("Open a Markdown file first, then run this command.");
+      new import_obsidian10.Notice("Open a Markdown file first, then run this command.");
       return true;
     }
     void this.showProgress(file);
@@ -1580,7 +2267,7 @@ var OmniscientPlugin = class extends import_obsidian9.Plugin {
     );
     const matches = results.filter((file) => file !== null);
     if (matches.length === 0) {
-      new import_obsidian9.Notice(
+      new import_obsidian10.Notice(
         "No quiz files found in the vault. Use the usage guide to create a sample quiz file."
       );
       return;

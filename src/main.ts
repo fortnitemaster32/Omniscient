@@ -233,23 +233,15 @@ export default class OmniscientPlugin extends Plugin {
                 statusFilter: 'all',
                 difficultyFilter: 'all',
                 masteredPasses: this.settings.masteredPasses,
+                headingFilter: undefined,
                 ...preset,
             };
             void this.openQuizView(config);
             return;
         }
-        const summary = summarizeBlocks(blocks, this.settings.masteredPasses);
-        new SetupModal(
-            this.app,
-            this,
-            filePaths,
-            blocks.length,
-            foundFiles,
-            summary.examReady,
-            (config) => {
-                void this.openQuizView(config);
-            },
-        ).open();
+        new SetupModal(this.app, this, filePaths, blocks, (config) => {
+            void this.openQuizView(config);
+        }).open();
     }
 
     /**

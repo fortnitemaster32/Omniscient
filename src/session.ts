@@ -21,7 +21,22 @@ interface GradedEntry {
     prevPasses: number;
 }
 
-function matchesFilter(block: QuestionBlock, config: QuizSessionConfig): boolean {
+function sameSectionPath(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((part, index) => part === b[index]);
+}
+
+/** True when a block passes the session's status, difficulty and section filters. */
+export function matchesFilter(block: QuestionBlock, config: QuizSessionConfig): boolean {
+    if (config.headingFilter !== undefined) {
+        const inSelectedSection = config.headingFilter.some(
+            (ref) =>
+                ref.filePath === block.sourcePath &&
+                sameSectionPath(ref.sectionPath, block.sectionPath),
+        );
+        if (!inSelectedSection) {
+            return false;
+        }
+    }
     if (
         config.difficultyFilter !== 'all' &&
         (block.difficulty ?? '').toLowerCase() !== config.difficultyFilter.toLowerCase()

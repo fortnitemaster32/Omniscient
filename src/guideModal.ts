@@ -59,6 +59,7 @@ export class GuideModal extends Modal {
         const formatList = contentEl.createEl('ul', { cls: 'omniscient-guide-list' });
         this.listItem(formatList, '[!Question] starts a question; [!Success] (or [!answer]) starts its answer.');
         this.listItem(formatList, 'Optional metadata after the pipe: a difficulty label and a status like Mastered(2).');
+        this.listItem(formatList, 'An optional > [!Hint] callout after an answer holds a note for yourself; it stays hidden until you ask for it.');
         this.listItem(formatList, 'Questions inside code fences, or indented by four or more spaces, are ignored.');
 
         // Starting a session.
@@ -66,12 +67,13 @@ export class GuideModal extends Modal {
         const startList = contentEl.createEl('ul', { cls: 'omniscient-guide-list' });
         this.listItem(startList, 'Run Start quiz for the current note, Choose quiz file, or Start quiz from folder from the command palette.');
         this.listItem(startList, 'The ribbon icon (a brain) starts a quiz for the active note, or opens the file picker.');
-        this.listItem(startList, 'In the setup dialog you can filter by status and difficulty and toggle shuffling (it defaults to Not mastered yet, so each session shows only the gaps).');
+        this.listItem(startList, 'In the setup dialog you can filter by status, difficulty, and section, and toggle shuffling (it defaults to Not mastered yet, so each session shows only the gaps).');
 
         // During the session.
         contentEl.createEl('h4', { cls: 'omniscient-guide-heading', text: 'During the session' });
         const sessionList = contentEl.createEl('ul', { cls: 'omniscient-guide-list' });
         this.listItem(sessionList, 'Space reveals the answer; grade yourself with Struggling, Almost, or Mastered (keys 1, 2 and 3).');
+        this.listItem(sessionList, 'Each question shows its number in the file, and hints stay hidden until you ask: H shows one, N adds or edits it.');
         this.listItem(sessionList, 'Every grade is saved to the file immediately, and Undo restores it both in the session and in the note.');
         this.listItem(sessionList, 'Finishing early is normal: press Esc or End session whenever you run out of time.');
 

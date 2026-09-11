@@ -189,3 +189,6 @@ Distance is the integral of velocity:
 $$
 \int_{1}^{3} 3t^2 \, dt = \left[ t^3 \right]_{1}^{3} = 27 - 1 = 26 \text{ meters}
 $$
+
+> [!Hint]
+> Distance is the integral of velocity, not the derivative. Watch the units: m/s times s gives meters.

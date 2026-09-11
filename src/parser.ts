@@ -47,6 +47,18 @@ const CALLOUT_RE = /^( {0,3}>\s*)\[!([^\]]*)\]([^\n]*)$/i;
 /** Matches `> Question rest` plain-style headers. */
 const PLAIN_RE = /^( {0,3}>\s*)(question|answer)\b([^\n]*)$/i;
 
+/** Matches an ATX heading (up to three leading spaces); for section tracking. */
+const ATX_HEADING_RE = /^ {0,3}(#{1,6})(.*)$/;
+
+/** Matches the start of a hint callout. */
+const HINT_START_RE = /^ {0,3}>\s*\[!\s*hint\s*\]/i;
+
+/** Matches any blockquote line (used to bound a hint callout). */
+const QUOTE_LINE_RE = /^ {0,3}>/;
+
+/** Matches a thematic break used as a question separator. */
+const THEMATIC_BREAK_RE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/;
+
 export interface ParsedHeader {
     kind: 'question' | 'answer';
     /** The original line with recognized trailing metadata tokens removed. */
@@ -148,6 +160,28 @@ export function parseHeader(
 }
 
 /**
+ * Parses an ATX heading line into its level and text. Headings are used
+ * for the section filter, so indented code, fenced code and blockquoted
+ * headings are excluded by the callers (this function only sees raw lines
+ * outside fences and never matches a line that starts with `>`).
+ */
+export function parseHeading(line: string): { level: number; text: string } | null {
+    const m = ATX_HEADING_RE.exec(line);
+    if (!m) {
+        return null;
+    }
+    const rest = m[2];
+    // CommonMark: the #s must be followed by a space or end of line.
+    if (rest.length > 0 && !/^\s/.test(rest)) {
+        return null;
+    }
+    let text = rest.trim();
+    // A closing sequence of #s is not part of the heading text.
+    text = text.replace(/\s+#+\s*$/, '').trim();
+    return { level: m[1].length, text };
+}
+
+/**
  * Strips one blockquote prefix from a line. Only 0-3 spaces of indentation
  * are allowed before the `>` (CommonMark blockquote rule); deeper indented
  * lines are indented code and are left untouched. Nested callouts (lines
@@ -177,6 +211,46 @@ export function assembleBody(lines: string[]): string {
         end--;
     }
     return lines.slice(start, end).join('\n');
+}
+
+/** One `> [!Hint]` callout found in a file. */
+export interface HintRun {
+    /** Index of the `> [!Hint]` line. */
+    start: number;
+    /** First index after the callout's contiguous blockquote lines. */
+    end: number;
+    /** Callout body with blockquote prefixes stripped. */
+    text: string;
+}
+
+/**
+ * Reads a hint callout starting at `start`, or returns null. The run is a
+ * contiguous blockquote whose body is taken from the quoted lines that
+ * follow (standard Obsidian callout syntax). A quote line that parses as a
+ * question or answer header ends the run so a following question is never
+ * swallowed as hint text.
+ */
+export function readHintRun(
+    lines: string[],
+    start: number,
+    difficultyLabels: string[],
+): HintRun | null {
+    if (!HINT_START_RE.test(lines[start])) {
+        return null;
+    }
+    let end = start + 1;
+    while (
+        end < lines.length &&
+        QUOTE_LINE_RE.test(lines[end]) &&
+        parseHeader(lines[end], difficultyLabels) === null
+    ) {
+        end++;
+    }
+    const body: string[] = [];
+    for (let i = start + 1; i < end; i++) {
+        body.push(stripQuotePrefix(lines[i]));
+    }
+    return { start, end, text: assembleBody(body) };
 }
 
 /** Small deterministic hash of a string (djb2). */
@@ -228,6 +302,8 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
     let collectingQuestion = false;
     let body: string[] = [];
     let inFence = false;
+    /** Headings above the current position, outermost first. */
+    const stack: string[] = [];
 
     const finalizeBody = () => {
         if (current === null) {
@@ -256,6 +332,26 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
             }
             continue;
         }
+        const heading = parseHeading(lines[i]);
+        if (heading !== null) {
+            // Section tracking: a heading replaces everything at its own
+            // level and below, so later questions get the new path.
+            stack.length = Math.min(stack.length, heading.level - 1);
+            stack.push(heading.text);
+        }
+        const hintRun = readHintRun(lines, i, difficultyLabels);
+        if (hintRun !== null) {
+            // Hint callouts stay in the file but never enter the bodies, so
+            // the body hash used to locate a block survives hint edits.
+            if (current !== null) {
+                current.hint =
+                    current.hint === undefined
+                        ? hintRun.text
+                        : `${current.hint}\n\n${hintRun.text}`;
+            }
+            i = hintRun.end - 1;
+            continue;
+        }
         const header = parseHeader(lines[i], difficultyLabels);
         if (header === null) {
             if (current !== null) {
@@ -270,11 +366,15 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
             const meta = extractMetadata(header.tokens, difficultyLabels);
             current = {
                 headerIndex: i,
+                ordinal: 0,
+                fileTotal: 0,
                 headerLine: lines[i],
                 stem: header.lineStem,
                 sourcePath: '',
+                sectionPath: [...stack],
                 questionBody: '',
                 answerBody: '',
+                hint: undefined,
                 difficulty: meta.difficulty,
                 status: meta.status,
                 passes: meta.passes,
@@ -294,6 +394,11 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
     }
     if (current !== null) {
         finalizeBody();
+    }
+    for (let i = 0; i < questions.length; i++) {
+        const question = questions[i];
+        question.ordinal = i + 1;
+        question.fileTotal = questions.length;
     }
     return { eol, questions };
 }
@@ -333,6 +438,13 @@ function bodyHashAt(
             body.push(stripped);
             continue;
         }
+        const hintRun = readHintRun(lines, i, difficultyLabels);
+        if (hintRun !== null) {
+            // Hints are excluded from the hash exactly like in parsing, so
+            // adding or editing one never breaks later grade writes.
+            i = hintRun.end - 1;
+            continue;
+        }
         const h = parseHeader(lines[i], difficultyLabels);
         if (h !== null) {
             break;
@@ -340,6 +452,35 @@ function bodyHashAt(
         body.push(stripped);
     }
     return hashString(assembleBody(body));
+}
+
+/**
+ * Locates the header line of a block: exact header text plus question-body
+ * hash, preferring the candidate closest to the block's original position
+ * so identical duplicate questions resolve to the right one.
+ */
+function locateBlockHeader(
+    lines: string[],
+    block: QuestionBlock,
+    difficultyLabels: string[],
+): number | null {
+    const needle = block.headerLine.trim();
+    let best: number | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== needle) {
+            continue;
+        }
+        if (bodyHashAt(lines, i, difficultyLabels) !== block.bodyHash) {
+            continue;
+        }
+        const distance = Math.abs(i - block.headerIndex);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = i;
+        }
+    }
+    return best;
 }
 
 /**
@@ -359,28 +500,140 @@ export function patchQuestionHeader(
 ): { content: string; patched: boolean } {
     const eol: '\n' | '\r\n' = content.includes('\r\n') ? '\r\n' : '\n';
     const lines = content.split(/\r?\n/);
-    const needle = block.headerLine.trim();
-    // Find the best match: exact header text plus body hash, preferring the
-    // candidate closest to the block's original position so that identical
-    // duplicate questions patch the right one.
-    let best: number | null = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim() !== needle) {
-            continue;
-        }
-        if (bodyHashAt(lines, i, difficultyLabels) !== block.bodyHash) {
-            continue;
-        }
-        const distance = Math.abs(i - block.headerIndex);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            best = i;
-        }
-    }
+    const best = locateBlockHeader(lines, block, difficultyLabels);
     if (best === null) {
         return { content, patched: false };
     }
     lines[best] = newLine;
+    return { content: lines.join(eol), patched: true };
+}
+
+/** First index after a block: the next question header, or end of file. */
+function findBlockEnd(
+    lines: string[],
+    headerIdx: number,
+    difficultyLabels: string[],
+): number {
+    let inFence = false;
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+        const stripped = stripQuotePrefix(lines[i]);
+        if (FENCE_RE.test(stripped)) {
+            inFence = !inFence;
+        }
+        if (inFence) {
+            continue;
+        }
+        const header = parseHeader(lines[i], difficultyLabels);
+        if (header !== null && header.kind === 'question') {
+            return i;
+        }
+    }
+    return lines.length;
+}
+
+/** Formats a hint body as hint callout lines. */
+function hintLinesFor(text: string): string[] {
+    const out = ['> [!Hint]'];
+    for (const line of text.split(/\r?\n/)) {
+        out.push(line.trim().length === 0 ? '>' : `> ${line}`);
+    }
+    return out;
+}
+
+function isBlankLine(line: string | undefined): boolean {
+    return line === undefined || line.trim().length === 0;
+}
+
+/** Cleans up spacing left behind after a hint callout was removed. */
+function tidyAfterRemoval(lines: string[], index: number): void {
+    if (index >= lines.length) {
+        if (index > 0 && lines[index - 1].trim().length === 0) {
+            lines.splice(index - 1, 1);
+        }
+        return;
+    }
+    if (index > 0 && lines[index - 1].trim().length === 0 && lines[index].trim().length === 0) {
+        lines.splice(index, 1);
+    }
+}
+
+/**
+ * Adds, replaces, or removes the hint note on a question block.
+ *
+ * The block is located exactly like a header patch. The hint is written as
+ * a top-level `> [!Hint]` callout at the end of the block, before trailing
+ * blank lines and `---` separators. Passing null (or blank text) removes
+ * the hint. Returns `patched: false` when the block can no longer be found
+ * (for example, the question was edited mid-session).
+ */
+export function patchQuestionHint(
+    content: string,
+    block: QuestionBlock,
+    hint: string | null,
+    difficultyLabels: string[],
+): { content: string; patched: boolean } {
+    const eol: '\n' | '\r\n' = content.includes('\r\n') ? '\r\n' : '\n';
+    const lines = content.split(/\r?\n/);
+    const headerIdx = locateBlockHeader(lines, block, difficultyLabels);
+    if (headerIdx === null) {
+        return { content, patched: false };
+    }
+    const end = findBlockEnd(lines, headerIdx, difficultyLabels);
+    // Collect hint callouts inside this block (there should be at most one).
+    const runs: HintRun[] = [];
+    let inFence = false;
+    for (let i = headerIdx + 1; i < end; i++) {
+        const stripped = stripQuotePrefix(lines[i]);
+        if (FENCE_RE.test(stripped)) {
+            inFence = !inFence;
+        }
+        if (inFence) {
+            continue;
+        }
+        const run = readHintRun(lines, i, difficultyLabels);
+        if (run !== null) {
+            runs.push(run);
+            i = run.end - 1;
+        }
+    }
+    if (hint === null || hint.trim().length === 0) {
+        // Remove from the end so earlier indices stay valid.
+        for (let i = runs.length - 1; i >= 0; i--) {
+            const run = runs[i];
+            lines.splice(run.start, run.end - run.start);
+            tidyAfterRemoval(lines, run.start);
+        }
+        return { content: lines.join(eol), patched: true };
+    }
+    const fresh = hintLinesFor(hint);
+    // Manual extra callouts are folded into the saved one: the first
+    // position is kept and the rest are dropped.
+    for (let i = runs.length - 1; i >= 1; i--) {
+        const run = runs[i];
+        lines.splice(run.start, run.end - run.start);
+        tidyAfterRemoval(lines, run.start);
+    }
+    const first = runs[0];
+    if (first !== undefined) {
+        lines.splice(first.start, first.end - first.start, ...fresh);
+        return { content: lines.join(eol), patched: true };
+    }
+    // New hint: place it at the end of the block content, before trailing
+    // blank lines and `---` separators.
+    let insertAt = end;
+    while (
+        insertAt > headerIdx + 1 &&
+        (isBlankLine(lines[insertAt - 1]) || THEMATIC_BREAK_RE.test(lines[insertAt - 1]))
+    ) {
+        insertAt--;
+    }
+    const insertion = [...fresh];
+    if (!isBlankLine(lines[insertAt - 1])) {
+        insertion.unshift('');
+    }
+    if (insertAt < lines.length && !isBlankLine(lines[insertAt])) {
+        insertion.push('');
+    }
+    lines.splice(insertAt, 0, ...insertion);
     return { content: lines.join(eol), patched: true };
 }
