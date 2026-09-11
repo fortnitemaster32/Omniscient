@@ -109,7 +109,7 @@ A hint line that would otherwise read as a question or answer header (for exampl
 
 ## Usage
 
-New to Omniscient? Run the **Show usage guide** command for a tour of the question format and the commands (it also appears once the first time the plugin loads). Both the guide and the settings tab can create a sample quiz file for you.
+New to Omniscient? Run the **Show usage guide** command for a tour of the question format and the commands (it also appears once the first time the plugin loads). Both the guide and the settings tab can create a sample quiz file for you. The sample has four headings, a mix of statuses, one question without an answer, and hints including a multi-paragraph one, so you can try the section filter and the hint keys right away.
 
 Commands (assign hotkeys in Settings → Hotkeys if you want them):
 

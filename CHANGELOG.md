@@ -4,6 +4,12 @@ All notable changes to Omniscient are documented here. The format is based on [K
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-11
+
+### Changed
+
+- The sample quiz created by the usage guide and the settings tab now demonstrates the section filter and hints: four headings, six questions (one without an answer), and four hints including a multi-paragraph one
+
 ## [0.5.1] - 2026-09-11
 
 ### Added

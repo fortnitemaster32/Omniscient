@@ -555,24 +555,38 @@ test('look-alike callout types are not quiz delimiters', () => {
     eq(questions[0]?.answerBody, 'real answer');
 });
 
-test('the bundled sample quiz parses into three questions', () => {
+test('the bundled sample quiz parses with sections and hints', () => {
     const { questions } = parseQuestions(SAMPLE_QUIZ_CONTENT, LABELS);
-    eq(questions.length, 3);
+    eq(questions.length, 6);
+    eq(questions[0]?.sectionPath, ['Omniscient sample quiz', 'Limits']);
     eq(questions[0]?.difficulty, 'Easy');
-    eq(questions[0]?.status, 'Mastered');
-    eq(questions[0]?.passes, 2);
-    eq(questions[0]?.questionBody, 'What is the derivative of x²?');
-    eq(questions[0]?.answerBody, '2x');
-    eq(questions[1]?.difficulty, 'Medium');
-    eq(questions[1]?.status, undefined);
-    eq(questions[1]?.answerBody, 'Do not passively re-read: answer from memory first, then check.');
-    eq(questions[2]?.difficulty, 'Hard');
-    eq(questions[2]?.status, 'Almost');
+    eq(questions[0]?.questionBody, 'What does it mean for a limit to exist?');
     eq(
-        questions[2]?.answerBody,
+        questions[0]?.hint,
+        '"Approaches", not "equals": think about where the graph is heading.',
+    );
+    eq(questions[1]?.answerBody, '');
+    eq(questions[2]?.sectionPath, ['Omniscient sample quiz', 'Derivatives']);
+    eq(questions[2]?.status, 'Mastered');
+    eq(questions[2]?.passes, 2);
+    eq(questions[2]?.questionBody, 'What is the derivative of x²?');
+    eq(questions[2]?.answerBody, '2x');
+    eq(questions[3]?.difficulty, 'Medium');
+    eq(questions[3]?.status, 'Almost');
+    eq(
+        questions[3]?.hint,
+        'Multiply by the old exponent first, then subtract one from it.\n\nCheck yourself: x² becomes 2x, not x.',
+    );
+    eq(questions[4]?.sectionPath, ['Omniscient sample quiz', 'Integrals']);
+    eq(questions[4]?.hint, 'The +C is the part everyone drops under exam pressure.');
+    eq(questions[5]?.sectionPath, ['Omniscient sample quiz', 'Method']);
+    eq(questions[5]?.difficulty, 'Hard');
+    eq(questions[5]?.status, 'Struggling');
+    eq(
+        questions[5]?.answerBody,
         'A large set of practice questions on one topic, worked through with retrieval practice.',
     );
-    eq(questions[2]?.hint, 'It is one topic at a time, not a mixed practice exam.');
+    eq(questions[5]?.hint, 'It is one topic at a time, not a mixed practice exam.');
 });
 
 test('round trip: grade, serialize, re-parse', () => {

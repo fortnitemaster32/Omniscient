@@ -670,9 +670,29 @@ Format: a [!Question] callout holds the question, the following
 [!Success] callout holds its answer. Optional metadata after the
 pipe: a difficulty label and a status (Struggling, Almost, or
 Mastered with its pass count). A [!Hint] callout after an answer
-stays hidden during a session until you ask for it. -->
+stays hidden during a session until you ask for it. Headings group
+questions into sections you can pick in the setup dialog. -->
 
 # Omniscient sample quiz
+
+## Limits
+
+> [!Question] Question | Easy
+
+What does it mean for a limit to exist?
+
+> [!Success] Answer
+
+The function approaches one value from both sides as the input nears the point.
+
+> [!Hint]
+> "Approaches", not "equals": think about where the graph is heading.
+
+> [!Question] Question | Hard
+
+This question intentionally has no answer. Try revealing it during a session.
+
+## Derivatives
 
 > [!Question] Question | Easy | Mastered(2)
 
@@ -682,15 +702,35 @@ What is the derivative of x\xB2?
 
 2x
 
-> [!Question] Question | Medium
+> [!Question] Question | Medium | Almost
 
-What does the quiz-and-recall method say about re-reading your notes?
+State the power rule.
 
 > [!Success] Answer
 
-Do not passively re-read: answer from memory first, then check.
+For f(x) = x\u207F, f\u2032(x) = n\xB7x\u207F\u207B\xB9.
 
-> [!Question] Question | Hard | Almost
+> [!Hint]
+> Multiply by the old exponent first, then subtract one from it.
+>
+> Check yourself: x\xB2 becomes 2x, not x.
+
+## Integrals
+
+> [!Question] Question | Medium
+
+What is the integral of 2x?
+
+> [!Success] Answer
+
+x\xB2 + C. Do not forget the constant of integration.
+
+> [!Hint]
+> The +C is the part everyone drops under exam pressure.
+
+## Method
+
+> [!Question] Question | Hard | Struggling
 
 What is a mega-problem set?
 
