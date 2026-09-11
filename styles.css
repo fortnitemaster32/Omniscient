@@ -291,3 +291,7 @@
     gap: var(--size-4-2);
     margin-top: var(--size-4-3);
 }
+
+.omniscient-modal-buttons button {
+    min-height: 44px;
+}

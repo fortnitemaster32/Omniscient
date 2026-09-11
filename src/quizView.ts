@@ -418,6 +418,11 @@ export class QuizView extends ItemView {
                 }
                 return ok;
             },
+            onClosed: () => {
+                // Shortcuts only fire while the view has focus; give it back
+                // after Cancel or Esc.
+                this.contentEl.focus();
+            },
         }).open();
     }
 
@@ -513,6 +518,9 @@ export class QuizView extends ItemView {
         }
         const abstract = this.app.vault.getAbstractFileByPath(path);
         if (!(abstract instanceof TFile)) {
+            // The file was renamed or deleted mid-session: count the lost
+            // grade instead of dropping it silently.
+            this.failedWrites++;
             return;
         }
         const labels = this.plugin.getDifficultyLabels();

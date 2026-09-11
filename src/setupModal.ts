@@ -20,16 +20,21 @@ interface SectionNode {
     /** Heading path, outermost first; [] for the "(no heading)" node. */
     sectionPath: string[];
     label: string;
-    /** Questions in this node and its descendants. */
-    count: number;
     children: SectionNode[];
     /** Synthetic per-file parent, only used for multi-file sessions. */
     isRoot: boolean;
 }
 
-/** Stable key for one node (file plus heading path). */
+/** Stable key for one selectable node (file plus heading path). */
 function sectionKey(filePath: string, sectionPath: string[]): string {
     return JSON.stringify([filePath, ...sectionPath]);
+}
+
+/** Key for tree state and search; file roots get their own namespace. */
+function nodeKey(node: SectionNode): string {
+    return node.isRoot
+        ? JSON.stringify(['root', node.filePath])
+        : sectionKey(node.filePath, node.sectionPath);
 }
 
 export class SetupModal extends Modal {
@@ -99,7 +104,7 @@ export class SetupModal extends Modal {
                 }
                 dropdown.setValue(this.statusFilter).onChange((value) => {
                     this.statusFilter = value as StatusFilter;
-                    this.refreshCounts();
+                    this.refreshAll();
                 });
             });
 
@@ -114,7 +119,7 @@ export class SetupModal extends Modal {
                     }
                     dropdown.setValue(this.difficultyFilter).onChange((value) => {
                         this.difficultyFilter = value;
-                        this.refreshCounts();
+                        this.refreshAll();
                     });
                 });
         }
@@ -165,15 +170,13 @@ export class SetupModal extends Modal {
                             this.selected.add(sectionKey(node.filePath, node.sectionPath));
                         }
                     }
-                    this.refreshTree();
-                    this.refreshCounts();
+                    this.refreshAll();
                 });
             })
             .addButton((button) => {
                 button.setButtonText('Clear').onClick(() => {
                     this.selected.clear();
-                    this.refreshTree();
-                    this.refreshCounts();
+                    this.refreshAll();
                 });
             });
 
@@ -202,27 +205,31 @@ export class SetupModal extends Modal {
         tree.empty();
         const visible =
             this.searchQuery.length > 0 ? this.visibleKeys(this.searchQuery) : null;
+        // Counts follow the status and difficulty filters, so a section's
+        // number is what a session would actually run from that section.
+        const matching = this.baseFilteredBlocks();
         const walk = (nodes: SectionNode[], depth: number): void => {
             for (const node of nodes) {
-                const key = sectionKey(node.filePath, node.sectionPath);
-                if (visible !== null && !visible.has(key)) {
+                if (visible !== null && !visible.has(nodeKey(node))) {
                     continue;
                 }
+                const count = matching.filter(
+                    (block) => block.sourcePath === node.filePath && this.inSubtree(block, node),
+                ).length;
                 const row = tree.createDiv({ cls: 'omniscient-section-row' });
                 row.style.paddingLeft = `${depth * 16}px`;
                 const state = this.nodeState(node);
                 const box = row.createEl('input', {
                     attr: {
                         type: 'checkbox',
-                        'aria-label': `${node.label} (${node.count} questions)`,
+                        'aria-label': `${node.label} (${count} questions)`,
                     },
                 });
                 box.checked = state === 'on';
                 box.indeterminate = state === 'partial';
                 box.addEventListener('change', () => {
                     this.setSubtree(node, box.checked);
-                    this.refreshTree();
-                    this.refreshCounts();
+                    this.refreshAll();
                 });
                 row.createDiv({
                     cls: node.isRoot
@@ -232,12 +239,18 @@ export class SetupModal extends Modal {
                 });
                 row.createDiv({
                     cls: 'omniscient-section-count',
-                    text: String(node.count),
+                    text: String(count),
                 });
                 walk(node.children, depth + 1);
             }
         };
         walk(this.roots, 0);
+    }
+
+    /** Repaints the tree (counts included) and the live totals. */
+    private refreshAll(): void {
+        this.refreshTree();
+        this.refreshCounts();
     }
 
     private refreshCounts(): void {
@@ -287,7 +300,6 @@ export class SetupModal extends Modal {
                 filePath,
                 sectionPath: [],
                 label: filePath.split('/').pop() ?? filePath,
-                count: fileBlocks.length,
                 children: [],
                 isRoot: true,
             };
@@ -301,14 +313,12 @@ export class SetupModal extends Modal {
                             filePath,
                             sectionPath: [],
                             label: '(no heading)',
-                            count: 0,
                             children: [],
                             isRoot: false,
                         };
                         nodes.set(key, node);
                         fileRoot.children.push(node);
                     }
-                    node.count++;
                     continue;
                 }
                 let parent = fileRoot;
@@ -321,14 +331,12 @@ export class SetupModal extends Modal {
                             filePath,
                             sectionPath: path,
                             label: block.sectionPath[depth],
-                            count: 0,
                             children: [],
                             isRoot: false,
                         };
                         nodes.set(key, node);
                         parent.children.push(node);
                     }
-                    node.count++;
                     parent = node;
                 }
             }
@@ -384,7 +392,7 @@ export class SetupModal extends Modal {
     private visibleKeys(query: string): Set<string> {
         const visible = new Set<string>();
         const markSubtree = (node: SectionNode): void => {
-            visible.add(sectionKey(node.filePath, node.sectionPath));
+            visible.add(nodeKey(node));
             for (const child of node.children) {
                 markSubtree(child);
             }
@@ -400,7 +408,7 @@ export class SetupModal extends Modal {
             if (self) {
                 markSubtree(node);
             } else if (any) {
-                visible.add(sectionKey(node.filePath, node.sectionPath));
+                visible.add(nodeKey(node));
             }
             return any;
         };
@@ -440,6 +448,30 @@ export class SetupModal extends Modal {
             headingFilter: this.selectedRefs(),
         };
         return this.blocks.filter((block) => matchesFilter(block, config));
+    }
+
+    /** Blocks matching the status and difficulty filters, ignoring sections. */
+    private baseFilteredBlocks(): QuestionBlock[] {
+        const config: QuizSessionConfig = {
+            filePaths: this.filePaths,
+            shuffle: false,
+            statusFilter: this.statusFilter,
+            difficultyFilter: this.difficultyFilter,
+            masteredPasses: this.plugin.settings.masteredPasses,
+            headingFilter: undefined,
+        };
+        return this.blocks.filter((block) => matchesFilter(block, config));
+    }
+
+    /** True when a block belongs to a section node or one of its descendants. */
+    private inSubtree(block: QuestionBlock, node: SectionNode): boolean {
+        if (node.isRoot) {
+            return true;
+        }
+        if (node.sectionPath.length === 0) {
+            return block.sectionPath.length === 0;
+        }
+        return node.sectionPath.every((part, index) => block.sectionPath[index] === part);
     }
 
     onClose(): void {

@@ -268,7 +268,16 @@ function readHintRun(lines, start, difficultyLabels) {
   for (let i = start + 1; i < end; i++) {
     body.push(stripQuotePrefix(lines[i]));
   }
-  return { start, end, text: assembleBody(body) };
+  return { start, end, text: decodeCharRefs(assembleBody(body)) };
+}
+function decodeCharRefs(text) {
+  return text.replace(/&#(\d{1,7});/g, (whole, digits) => {
+    const code = Number.parseInt(digits, 10);
+    if (!Number.isFinite(code) || code < 0 || code > 1114111) {
+      return whole;
+    }
+    return String.fromCodePoint(code);
+  });
 }
 function hashString(s) {
   let h = 5381;
@@ -337,7 +346,7 @@ function parseQuestions(content, difficultyLabels) {
     }
     const hintRun = readHintRun(lines, i, difficultyLabels);
     if (hintRun !== null) {
-      if (current !== null) {
+      if (current !== null && hintRun.text.length > 0) {
         current.hint = current.hint === void 0 ? hintRun.text : `${current.hint}
 
 ${hintRun.text}`;
@@ -429,10 +438,38 @@ function bodyHashAt(lines, headerIdx, difficultyLabels) {
   }
   return hashString(assembleBody(body));
 }
+function questionOrdinals(lines, difficultyLabels) {
+  const ordinals = /* @__PURE__ */ new Map();
+  let inFence = false;
+  let count = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const stripped = stripQuotePrefix(lines[i]);
+    if (FENCE_RE.test(stripped)) {
+      inFence = !inFence;
+    }
+    if (inFence) {
+      continue;
+    }
+    const hintRun = readHintRun(lines, i, difficultyLabels);
+    if (hintRun !== null) {
+      i = hintRun.end - 1;
+      continue;
+    }
+    const header = parseHeader(lines[i], difficultyLabels);
+    if (header !== null && header.kind === "question") {
+      count++;
+      ordinals.set(i, count);
+    }
+  }
+  return ordinals;
+}
 function locateBlockHeader(lines, block, difficultyLabels) {
   const needle = block.headerLine.trim();
+  const ordinals = questionOrdinals(lines, difficultyLabels);
   let best = null;
   let bestDistance = Number.POSITIVE_INFINITY;
+  let fallback = null;
+  let fallbackDistance = Number.POSITIVE_INFINITY;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() !== needle) {
       continue;
@@ -441,12 +478,17 @@ function locateBlockHeader(lines, block, difficultyLabels) {
       continue;
     }
     const distance = Math.abs(i - block.headerIndex);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = i;
+    if (ordinals.get(i) === block.ordinal) {
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = i;
+      }
+    } else if (distance < fallbackDistance) {
+      fallbackDistance = distance;
+      fallback = i;
     }
   }
-  return best;
+  return best != null ? best : fallback;
 }
 function patchQuestionHeader(content, block, newLine, difficultyLabels) {
   const eol = content.includes("\r\n") ? "\r\n" : "\n";
@@ -468,6 +510,11 @@ function findBlockEnd(lines, headerIdx, difficultyLabels) {
     if (inFence) {
       continue;
     }
+    const hintRun = readHintRun(lines, i, difficultyLabels);
+    if (hintRun !== null) {
+      i = hintRun.end - 1;
+      continue;
+    }
     const header = parseHeader(lines[i], difficultyLabels);
     if (header !== null && header.kind === "question") {
       return i;
@@ -475,10 +522,23 @@ function findBlockEnd(lines, headerIdx, difficultyLabels) {
   }
   return lines.length;
 }
+function neutralizeHeaderLine(line) {
+  const match = /^(\s*)(.*)$/.exec(line);
+  if (match === null) {
+    return line;
+  }
+  const indent = match[1];
+  const body = match[2];
+  const headerShaped = /^(?:question|answer)\b/i.test(body) || /^\[!\s*(?:question|success|answer)\s*\]/i.test(body);
+  if (!headerShaped) {
+    return line;
+  }
+  return `${indent}&#${body.charCodeAt(0)};${body.slice(1)}`;
+}
 function hintLinesFor(text) {
   const out = ["> [!Hint]"];
   for (const line of text.split(/\r?\n/)) {
-    out.push(line.trim().length === 0 ? ">" : `> ${line}`);
+    out.push(line.trim().length === 0 ? ">" : `> ${neutralizeHeaderLine(line)}`);
   }
   return out;
 }
@@ -660,7 +720,9 @@ var HintModal = class extends import_obsidian5.Modal {
     this.render();
   }
   onClose() {
+    var _a, _b;
     this.contentEl.empty();
+    (_b = (_a = this.options).onClosed) == null ? void 0 : _b.call(_a);
   }
   render() {
     const { contentEl } = this;
@@ -719,9 +781,13 @@ var HintModal = class extends import_obsidian5.Modal {
     }
     this.saving = true;
     button.disabled = true;
-    const ok = await this.options.onSubmit(value);
-    this.saving = false;
-    button.disabled = false;
+    let ok = false;
+    try {
+      ok = await this.options.onSubmit(value);
+    } finally {
+      this.saving = false;
+      button.disabled = false;
+    }
     if (ok) {
       this.close();
     }
@@ -914,7 +980,7 @@ var SummaryModal = class extends import_obsidian6.Modal {
     if (this.options.failedWrites > 0) {
       contentEl.createDiv({
         cls: "omniscient-summary-note",
-        text: `${this.options.failedWrites} question(s) could not be saved because the file changed during the session.`
+        text: `${this.options.failedWrites} change(s) could not be saved because the file changed during the session.`
       });
     }
     new import_obsidian6.Setting(contentEl).addButton((button) => {
@@ -1315,6 +1381,9 @@ var QuizView = class extends import_obsidian7.ItemView {
           );
         }
         return ok;
+      },
+      onClosed: () => {
+        this.contentEl.focus();
       }
     }).open();
   }
@@ -1405,6 +1474,7 @@ var QuizView = class extends import_obsidian7.ItemView {
     }
     const abstract = this.app.vault.getAbstractFileByPath(path);
     if (!(abstract instanceof import_obsidian7.TFile)) {
+      this.failedWrites++;
       return;
     }
     const labels = this.plugin.getDifficultyLabels();
@@ -1629,6 +1699,9 @@ var STATUS_OPTIONS = {
 function sectionKey(filePath, sectionPath) {
   return JSON.stringify([filePath, ...sectionPath]);
 }
+function nodeKey(node) {
+  return node.isRoot ? JSON.stringify(["root", node.filePath]) : sectionKey(node.filePath, node.sectionPath);
+}
 var SetupModal = class extends import_obsidian9.Modal {
   constructor(app, plugin, filePaths, blocks, onStart) {
     super(app);
@@ -1682,7 +1755,7 @@ var SetupModal = class extends import_obsidian9.Modal {
       }
       dropdown.setValue(this.statusFilter).onChange((value) => {
         this.statusFilter = value;
-        this.refreshCounts();
+        this.refreshAll();
       });
     });
     if (this.difficultyLabels.length > 0) {
@@ -1693,7 +1766,7 @@ var SetupModal = class extends import_obsidian9.Modal {
         }
         dropdown.setValue(this.difficultyFilter).onChange((value) => {
           this.difficultyFilter = value;
-          this.refreshCounts();
+          this.refreshAll();
         });
       });
     }
@@ -1733,14 +1806,12 @@ var SetupModal = class extends import_obsidian9.Modal {
             this.selected.add(sectionKey(node.filePath, node.sectionPath));
           }
         }
-        this.refreshTree();
-        this.refreshCounts();
+        this.refreshAll();
       });
     }).addButton((button) => {
       button.setButtonText("Clear").onClick(() => {
         this.selected.clear();
-        this.refreshTree();
-        this.refreshCounts();
+        this.refreshAll();
       });
     });
     const search = contentEl.createEl("input", {
@@ -1765,27 +1836,29 @@ var SetupModal = class extends import_obsidian9.Modal {
     }
     tree.empty();
     const visible = this.searchQuery.length > 0 ? this.visibleKeys(this.searchQuery) : null;
+    const matching = this.baseFilteredBlocks();
     const walk = (nodes, depth) => {
       for (const node of nodes) {
-        const key = sectionKey(node.filePath, node.sectionPath);
-        if (visible !== null && !visible.has(key)) {
+        if (visible !== null && !visible.has(nodeKey(node))) {
           continue;
         }
+        const count = matching.filter(
+          (block) => block.sourcePath === node.filePath && this.inSubtree(block, node)
+        ).length;
         const row = tree.createDiv({ cls: "omniscient-section-row" });
         row.style.paddingLeft = `${depth * 16}px`;
         const state = this.nodeState(node);
         const box = row.createEl("input", {
           attr: {
             type: "checkbox",
-            "aria-label": `${node.label} (${node.count} questions)`
+            "aria-label": `${node.label} (${count} questions)`
           }
         });
         box.checked = state === "on";
         box.indeterminate = state === "partial";
         box.addEventListener("change", () => {
           this.setSubtree(node, box.checked);
-          this.refreshTree();
-          this.refreshCounts();
+          this.refreshAll();
         });
         row.createDiv({
           cls: node.isRoot ? "omniscient-section-label omniscient-section-root" : "omniscient-section-label",
@@ -1793,12 +1866,17 @@ var SetupModal = class extends import_obsidian9.Modal {
         });
         row.createDiv({
           cls: "omniscient-section-count",
-          text: String(node.count)
+          text: String(count)
         });
         walk(node.children, depth + 1);
       }
     };
     walk(this.roots, 0);
+  }
+  /** Repaints the tree (counts included) and the live totals. */
+  refreshAll() {
+    this.refreshTree();
+    this.refreshCounts();
   }
   refreshCounts() {
     const filtered = this.filteredBlocks();
@@ -1845,7 +1923,6 @@ var SetupModal = class extends import_obsidian9.Modal {
         filePath,
         sectionPath: [],
         label: (_a = filePath.split("/").pop()) != null ? _a : filePath,
-        count: fileBlocks.length,
         children: [],
         isRoot: true
       };
@@ -1859,14 +1936,12 @@ var SetupModal = class extends import_obsidian9.Modal {
               filePath,
               sectionPath: [],
               label: "(no heading)",
-              count: 0,
               children: [],
               isRoot: false
             };
             nodes.set(key, node);
             fileRoot.children.push(node);
           }
-          node.count++;
           continue;
         }
         let parent = fileRoot;
@@ -1879,14 +1954,12 @@ var SetupModal = class extends import_obsidian9.Modal {
               filePath,
               sectionPath: path,
               label: block.sectionPath[depth],
-              count: 0,
               children: [],
               isRoot: false
             };
             nodes.set(key, node);
             parent.children.push(node);
           }
-          node.count++;
           parent = node;
         }
       }
@@ -1938,7 +2011,7 @@ var SetupModal = class extends import_obsidian9.Modal {
   visibleKeys(query) {
     const visible = /* @__PURE__ */ new Set();
     const markSubtree = (node) => {
-      visible.add(sectionKey(node.filePath, node.sectionPath));
+      visible.add(nodeKey(node));
       for (const child of node.children) {
         markSubtree(child);
       }
@@ -1954,7 +2027,7 @@ var SetupModal = class extends import_obsidian9.Modal {
       if (self) {
         markSubtree(node);
       } else if (any) {
-        visible.add(sectionKey(node.filePath, node.sectionPath));
+        visible.add(nodeKey(node));
       }
       return any;
     };
@@ -1990,6 +2063,28 @@ var SetupModal = class extends import_obsidian9.Modal {
       headingFilter: this.selectedRefs()
     };
     return this.blocks.filter((block) => matchesFilter(block, config));
+  }
+  /** Blocks matching the status and difficulty filters, ignoring sections. */
+  baseFilteredBlocks() {
+    const config = {
+      filePaths: this.filePaths,
+      shuffle: false,
+      statusFilter: this.statusFilter,
+      difficultyFilter: this.difficultyFilter,
+      masteredPasses: this.plugin.settings.masteredPasses,
+      headingFilter: void 0
+    };
+    return this.blocks.filter((block) => matchesFilter(block, config));
+  }
+  /** True when a block belongs to a section node or one of its descendants. */
+  inSubtree(block, node) {
+    if (node.isRoot) {
+      return true;
+    }
+    if (node.sectionPath.length === 0) {
+      return block.sectionPath.length === 0;
+    }
+    return node.sectionPath.every((part, index) => block.sectionPath[index] === part);
   }
   onClose() {
     this.contentEl.empty();

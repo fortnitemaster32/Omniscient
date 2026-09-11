@@ -250,7 +250,22 @@ export function readHintRun(
     for (let i = start + 1; i < end; i++) {
         body.push(stripQuotePrefix(lines[i]));
     }
-    return { start, end, text: assembleBody(body) };
+    return { start, end, text: decodeCharRefs(assembleBody(body)) };
+}
+
+/**
+ * Decodes the numeric character references the writer uses to keep hint
+ * text that looks like a question or answer header from parsing as one.
+ * Only values this module can write are decoded; anything else is kept.
+ */
+function decodeCharRefs(text: string): string {
+    return text.replace(/&#(\d{1,7});/g, (whole, digits: string) => {
+        const code = Number.parseInt(digits, 10);
+        if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) {
+            return whole;
+        }
+        return String.fromCodePoint(code);
+    });
 }
 
 /** Small deterministic hash of a string (djb2). */
@@ -342,8 +357,10 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
         const hintRun = readHintRun(lines, i, difficultyLabels);
         if (hintRun !== null) {
             // Hint callouts stay in the file but never enter the bodies, so
-            // the body hash used to locate a block survives hint edits.
-            if (current !== null) {
+            // the body hash used to locate a block survives hint edits. An
+            // empty callout (or one the writer cannot round-trip) leaves the
+            // block without a hint instead of producing an empty one.
+            if (current !== null && hintRun.text.length > 0) {
                 current.hint =
                     current.hint === undefined
                         ? hintRun.text
@@ -455,9 +472,45 @@ function bodyHashAt(
 }
 
 /**
+ * Maps each question-header line index to its 1-based question ordinal,
+ * using the same fence and hint-run rules as parsing. Ordinals are stable
+ * when a hint is inserted or removed, unlike raw line indices.
+ */
+function questionOrdinals(
+    lines: string[],
+    difficultyLabels: string[],
+): Map<number, number> {
+    const ordinals = new Map<number, number>();
+    let inFence = false;
+    let count = 0;
+    for (let i = 0; i < lines.length; i++) {
+        const stripped = stripQuotePrefix(lines[i]);
+        if (FENCE_RE.test(stripped)) {
+            inFence = !inFence;
+        }
+        if (inFence) {
+            continue;
+        }
+        const hintRun = readHintRun(lines, i, difficultyLabels);
+        if (hintRun !== null) {
+            i = hintRun.end - 1;
+            continue;
+        }
+        const header = parseHeader(lines[i], difficultyLabels);
+        if (header !== null && header.kind === 'question') {
+            count++;
+            ordinals.set(i, count);
+        }
+    }
+    return ordinals;
+}
+
+/**
  * Locates the header line of a block: exact header text plus question-body
- * hash, preferring the candidate closest to the block's original position
- * so identical duplicate questions resolve to the right one.
+ * hash. The block's ordinal decides between identical duplicate questions,
+ * because ordinals survive hint insertions and removals (which shift line
+ * indices); the closest original position is the fallback when the file
+ * changed enough that the ordinal no longer matches.
  */
 function locateBlockHeader(
     lines: string[],
@@ -465,8 +518,11 @@ function locateBlockHeader(
     difficultyLabels: string[],
 ): number | null {
     const needle = block.headerLine.trim();
+    const ordinals = questionOrdinals(lines, difficultyLabels);
     let best: number | null = null;
     let bestDistance = Number.POSITIVE_INFINITY;
+    let fallback: number | null = null;
+    let fallbackDistance = Number.POSITIVE_INFINITY;
     for (let i = 0; i < lines.length; i++) {
         if (lines[i].trim() !== needle) {
             continue;
@@ -475,12 +531,17 @@ function locateBlockHeader(
             continue;
         }
         const distance = Math.abs(i - block.headerIndex);
-        if (distance < bestDistance) {
-            bestDistance = distance;
-            best = i;
+        if (ordinals.get(i) === block.ordinal) {
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = i;
+            }
+        } else if (distance < fallbackDistance) {
+            fallbackDistance = distance;
+            fallback = i;
         }
     }
-    return best;
+    return best ?? fallback;
 }
 
 /**
@@ -523,6 +584,13 @@ function findBlockEnd(
         if (inFence) {
             continue;
         }
+        const hintRun = readHintRun(lines, i, difficultyLabels);
+        if (hintRun !== null) {
+            // Skip whole hint callouts so fence-shaped lines inside a hint
+            // cannot desync the scan.
+            i = hintRun.end - 1;
+            continue;
+        }
         const header = parseHeader(lines[i], difficultyLabels);
         if (header !== null && header.kind === 'question') {
             return i;
@@ -531,11 +599,33 @@ function findBlockEnd(
     return lines.length;
 }
 
+/**
+ * Rewrites a hint line that would parse as a question or answer header so
+ * it still renders the same but can never be read back as a delimiter.
+ * The first character becomes a numeric character reference, which the
+ * reader decodes again.
+ */
+function neutralizeHeaderLine(line: string): string {
+    const match = /^(\s*)(.*)$/.exec(line);
+    if (match === null) {
+        return line;
+    }
+    const indent = match[1];
+    const body = match[2];
+    const headerShaped =
+        /^(?:question|answer)\b/i.test(body) ||
+        /^\[!\s*(?:question|success|answer)\s*\]/i.test(body);
+    if (!headerShaped) {
+        return line;
+    }
+    return `${indent}&#${body.charCodeAt(0)};${body.slice(1)}`;
+}
+
 /** Formats a hint body as hint callout lines. */
 function hintLinesFor(text: string): string[] {
     const out = ['> [!Hint]'];
     for (const line of text.split(/\r?\n/)) {
-        out.push(line.trim().length === 0 ? '>' : `> ${line}`);
+        out.push(line.trim().length === 0 ? '>' : `> ${neutralizeHeaderLine(line)}`);
     }
     return out;
 }

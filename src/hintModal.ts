@@ -13,6 +13,8 @@ export interface HintModalOptions {
      * is not lost.
      */
     onSubmit: (text: string | null) => Promise<boolean>;
+    /** Runs after the dialog closes, so the quiz view can take focus back. */
+    onClosed?: () => void;
 }
 
 export class HintModal extends Modal {
@@ -29,6 +31,7 @@ export class HintModal extends Modal {
 
     onClose(): void {
         this.contentEl.empty();
+        this.options.onClosed?.();
     }
 
     private render(): void {
@@ -86,9 +89,13 @@ export class HintModal extends Modal {
         }
         this.saving = true;
         button.disabled = true;
-        const ok = await this.options.onSubmit(value);
-        this.saving = false;
-        button.disabled = false;
+        let ok = false;
+        try {
+            ok = await this.options.onSubmit(value);
+        } finally {
+            this.saving = false;
+            button.disabled = false;
+        }
         if (ok) {
             this.close();
         }

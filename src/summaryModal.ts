@@ -51,7 +51,7 @@ export class SummaryModal extends Modal {
         if (this.options.failedWrites > 0) {
             contentEl.createDiv({
                 cls: 'omniscient-summary-note',
-                text: `${this.options.failedWrites} question(s) could not be saved because the file changed during the session.`,
+                text: `${this.options.failedWrites} change(s) could not be saved because the file changed during the session.`,
             });
         }
 

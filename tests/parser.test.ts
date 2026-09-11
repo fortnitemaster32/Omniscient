@@ -872,6 +872,174 @@ test('patchQuestionHint is a no-op when the block changed', () => {
     eq(result.content, edited);
 });
 
+test('a hint write does not misdirect a later duplicate question grade', () => {
+    const content = [
+        '> Question',
+        'same body',
+        '> Answer',
+        'a',
+        '> Question',
+        'same body',
+        '> Answer',
+        'b',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 2);
+    const first = questions[0];
+    const second = questions[1];
+    // Add a hint to the first question. This inserts lines, so the second
+    // block's headerIndex is now stale; its ordinal is not.
+    const withHint = patchQuestionHint(content, first, 'check units', LABELS).content;
+    const graded = patchQuestionHeader(
+        withHint,
+        second,
+        '> Question | Mastered(1)',
+        LABELS,
+    );
+    eq(graded.patched, true);
+    const final = parseQuestions(graded.content, LABELS);
+    eq(final.questions.length, 2);
+    eq(final.questions[0]?.hint, 'check units');
+    eq(final.questions[0]?.status, undefined);
+    eq(final.questions[1]?.hint, undefined);
+    eq(final.questions[1]?.status, 'Mastered');
+});
+
+test('header-shaped hint lines round-trip safely', () => {
+    const content = '> Question\nbody\n> Answer\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    const text = [
+        'Question: check units.',
+        'Answer with the +C.',
+        'Watch the sign.',
+        'Question 3 was the same.',
+        '[!question] sneaky',
+    ].join('\n');
+    const withHint = patchQuestionHint(content, questions[0], text, LABELS).content;
+    const reparsed = parseQuestions(withHint, LABELS);
+    // No phantom question, no header rewrite, and the text is unchanged.
+    eq(reparsed.questions.length, 1);
+    eq(reparsed.questions[0]?.hint, text);
+    eq(reparsed.questions[0]?.questionBody, 'body');
+    eq(reparsed.questions[0]?.answerBody, 'ans');
+    eq(reparsed.questions[0]?.ordinal, 1);
+});
+
+test('an empty hint callout leaves the block without a hint', () => {
+    const content = ['> Question', 'body', '> [!Hint]', '> Answer', 'ans'].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.hint, undefined);
+    eq(questions[0]?.questionBody, 'body');
+});
+
+test('removing a hint from a block without one is a no-op', () => {
+    const content = '> Question\nbody\n> Answer\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    const result = patchQuestionHint(content, questions[0], null, LABELS);
+    eq(result.patched, true);
+    eq(result.content, content);
+});
+
+test('a hint containing fence-shaped lines does not hide later questions', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> Question',
+        'second',
+        '> Answer',
+        'second ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    const hint = 'Watch this:\n```\nnot code\n```';
+    const withHint = patchQuestionHint(content, questions[0], hint, LABELS).content;
+    const reparsed = parseQuestions(withHint, LABELS);
+    eq(reparsed.questions.length, 2);
+    eq(reparsed.questions[0]?.hint, hint);
+    eq(reparsed.questions[1]?.questionBody, 'second');
+});
+
+test('a second manual hint callout is folded into the first on save', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> one',
+        '',
+        '> [!Hint]',
+        '> two',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.hint, 'one\n\ntwo');
+    const result = patchQuestionHint(content, questions[0], 'saved', LABELS);
+    const reparsed = parseQuestions(result.content, LABELS);
+    eq(reparsed.questions.length, 1);
+    eq(reparsed.questions[0]?.hint, 'saved');
+});
+
+test('hint inserts into a block without an answer and keeps the hash', () => {
+    const content = '> Question\nbody only\n> Question\nsecond\n> Answer\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    const withHint = patchQuestionHint(content, questions[0], 'note', LABELS).content;
+    const reparsed = parseQuestions(withHint, LABELS);
+    eq(reparsed.questions.length, 2);
+    eq(reparsed.questions[0]?.hint, 'note');
+    eq(reparsed.questions[0]?.questionBody, 'body only');
+    eq(reparsed.questions[0]?.bodyHash, questions[0]?.bodyHash);
+    const graded = patchQuestionHeader(
+        withHint,
+        questions[0],
+        '> Question | Mastered(1)',
+        LABELS,
+    );
+    eq(graded.patched, true);
+});
+
+test('hints land before star and underscore separators too', () => {
+    for (const separator of ['***', '___']) {
+        const content = [
+            '> Question',
+            'body',
+            '> Answer',
+            'ans',
+            separator,
+            '> Question',
+            'next',
+            '> Answer',
+            'n',
+        ].join('\n');
+        const { questions } = parseQuestions(content, LABELS);
+        const result = patchQuestionHint(content, questions[0], 'note', LABELS);
+        const lines = result.content.split('\n');
+        const hintIndex = lines.indexOf('> [!Hint]');
+        eq(hintIndex > 0 && hintIndex < lines.indexOf(separator), true);
+    }
+});
+
+test('heading closing sequences and long hash runs are not headings', () => {
+    const content = [
+        '## Real ##',
+        '> Question',
+        'a',
+        '> Answer',
+        'x',
+        '#NoSpace',
+        '####### seven',
+        '> Question',
+        'b',
+        '> Answer',
+        'y',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.sectionPath, ['Real']);
+    eq(questions[1]?.sectionPath, ['Real']);
+});
+
 test('round trip: add a hint, then still patch the grade', () => {
     const content = '> Question | Hard\nbody\n> Answer\nans';
     const parsed = parseQuestions(content, LABELS);
