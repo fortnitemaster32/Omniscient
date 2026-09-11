@@ -236,15 +236,23 @@ export function stripQuotePrefix(line: string): string {
     return stripped;
 }
 
-/**
- * Joins body lines, dropping blank lines and thematic breaks at the
- * trailing edge. Trailing separators (`---`, `***`, `___`) are layout,
- * not content, and hint writes insert before them; ignoring them keeps
- * the assembled body and the question-body hash stable across hint
- * writes. Interior breaks stay in the body. Leading blank lines are
- * dropped as well, matching the previous behaviour.
- */
+/** Joins body lines, dropping leading and trailing blank lines. */
 export function assembleBody(lines: string[]): string {
+    return assembleBodyLines(lines, false);
+}
+
+/**
+ * Question and answer body assembly: like assembleBody, but also drops
+ * trailing thematic breaks. Those breaks are separators that a hint
+ * write inserts before, so ignoring them keeps the assembled body and
+ * the question-body hash stable. Hint text keeps its trailing breaks
+ * (its own callout content is not layout).
+ */
+function assembleBodyContent(lines: string[]): string {
+    return assembleBodyLines(lines, true);
+}
+
+function assembleBodyLines(lines: string[], trimSeparators: boolean): string {
     let start = 0;
     let end = lines.length;
     while (start < end && lines[start].trim().length === 0) {
@@ -255,8 +263,10 @@ export function assembleBody(lines: string[]): string {
         while (end > start && lines[end - 1].trim().length === 0) {
             end--;
         }
-        while (end > start && THEMATIC_BREAK_RE.test(lines[end - 1])) {
-            end--;
+        if (trimSeparators) {
+            while (end > start && THEMATIC_BREAK_RE.test(lines[end - 1])) {
+                end--;
+            }
         }
         if (end === before) {
             break;
@@ -388,7 +398,7 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
         if (current === null) {
             return;
         }
-        const assembled = assembleBody(body);
+        const assembled = assembleBodyContent(body);
         if (collectingQuestion) {
             current.questionBody = assembled;
             current.bodyHash = hashString(assembled);
@@ -543,7 +553,7 @@ function bodyHashAt(
         }
         body.push(stripped);
     }
-    return hashString(assembleBody(body));
+    return hashString(assembleBodyContent(body));
 }
 
 /**

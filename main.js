@@ -264,6 +264,12 @@ function stripQuotePrefix(line) {
   return stripped;
 }
 function assembleBody(lines) {
+  return assembleBodyLines(lines, false);
+}
+function assembleBodyContent(lines) {
+  return assembleBodyLines(lines, true);
+}
+function assembleBodyLines(lines, trimSeparators) {
   let start = 0;
   let end = lines.length;
   while (start < end && lines[start].trim().length === 0) {
@@ -274,8 +280,10 @@ function assembleBody(lines) {
     while (end > start && lines[end - 1].trim().length === 0) {
       end--;
     }
-    while (end > start && THEMATIC_BREAK_RE.test(lines[end - 1])) {
-      end--;
+    if (trimSeparators) {
+      while (end > start && THEMATIC_BREAK_RE.test(lines[end - 1])) {
+        end--;
+      }
     }
     if (end === before) {
       break;
@@ -353,7 +361,7 @@ function parseQuestions(content, difficultyLabels) {
     if (current === null) {
       return;
     }
-    const assembled = assembleBody(body);
+    const assembled = assembleBodyContent(body);
     if (collectingQuestion) {
       current.questionBody = assembled;
       current.bodyHash = hashString(assembled);
@@ -477,7 +485,7 @@ function bodyHashAt(lines, headerIdx, difficultyLabels) {
     }
     body.push(stripped);
   }
-  return hashString(assembleBody(body));
+  return hashString(assembleBodyContent(body));
 }
 function questionOrdinals(lines, difficultyLabels) {
   const ordinals = /* @__PURE__ */ new Map();

@@ -890,6 +890,21 @@ test('interior separators stay part of the body', () => {
     eq(questions[0]?.questionBody, 'part one\n---\npart two');
 });
 
+test('hint text keeps a trailing separator', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> remember the sign',
+        '> ---',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.hint, 'remember the sign\n---');
+});
+
 test('questions before any heading have an empty section path', () => {
     const { questions } = parseQuestions('> Question\nbody\n> Answer\nans', LABELS);
     eq(questions[0]?.sectionPath, []);
