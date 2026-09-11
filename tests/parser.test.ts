@@ -647,6 +647,85 @@ test('a heading deeper than the current stack nests under it', () => {
     eq(questions[0]?.sectionPath, ['A', 'C']);
 });
 
+test('same-level headings are siblings even when a level is skipped', () => {
+    const content = [
+        '# Title',
+        '> Question',
+        'one',
+        '> Answer',
+        'a1',
+        '### Alpha',
+        '> Question',
+        'two',
+        '> Answer',
+        'a2',
+        '### Beta',
+        '> Question',
+        'three',
+        '> Answer',
+        'a3',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 3);
+    eq(questions[0]?.sectionPath, ['Title']);
+    eq(questions[1]?.sectionPath, ['Title', 'Alpha']);
+    eq(questions[2]?.sectionPath, ['Title', 'Beta']);
+    // Structural headings do not leak into the previous answer body.
+    eq(questions[0]?.answerBody, 'a1');
+    eq(questions[1]?.answerBody, 'a2');
+    eq(questions[2]?.answerBody, 'a3');
+});
+
+test('same-level headings replace each other in the section path', () => {
+    const content = [
+        '# Title',
+        '## A',
+        '> Question',
+        'one',
+        '> Answer',
+        'a1',
+        '## B',
+        '> Question',
+        'two',
+        '> Answer',
+        'a2',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.sectionPath, ['Title', 'A']);
+    eq(questions[1]?.sectionPath, ['Title', 'B']);
+});
+
+test('a heading with no question after it stays body text', () => {
+    const content = '> Question\nbody\n> Answer\nans\n\n### Notes\n\nmore notes';
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.sectionPath, []);
+    eq(questions[0]?.answerBody, 'ans\n\n### Notes\n\nmore notes');
+});
+
+test('structural headings inside a question region are not body text', () => {
+    const content = [
+        '> Question',
+        'body',
+        '### Tail',
+        '',
+        '> Question',
+        'second',
+        '> Answer',
+        'ans',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions.length, 2);
+    eq(questions[0]?.questionBody, 'body');
+    const result = patchQuestionHeader(
+        content,
+        questions[0],
+        '> Question | Mastered(1)',
+        LABELS,
+    );
+    eq(result.patched, true);
+    eq(result.content.split('\n')[0], '> Question | Mastered(1)');
+});
+
 test('questions before any heading have an empty section path', () => {
     const { questions } = parseQuestions('> Question\nbody\n> Answer\nans', LABELS);
     eq(questions[0]?.sectionPath, []);

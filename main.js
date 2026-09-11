@@ -221,6 +221,16 @@ function parseHeader(line, difficultyLabels) {
   const lineStem = stem.length > 0 ? `${plain[1]}${plain[2]} ${stem}` : `${plain[1]}${plain[2]}`;
   return { kind, lineStem, tokens };
 }
+function isSectionHeading(lines, start, difficultyLabels) {
+  for (let i = start + 1; i < lines.length; i++) {
+    if (lines[i].trim().length === 0 || parseHeading(lines[i]) !== null) {
+      continue;
+    }
+    const header = parseHeader(lines[i], difficultyLabels);
+    return header !== null && header.kind === "question";
+  }
+  return false;
+}
 function parseHeading(line) {
   const m = ATX_HEADING_RE.exec(line);
   if (!m) {
@@ -347,8 +357,13 @@ function parseQuestions(content, difficultyLabels) {
     }
     const heading = parseHeading(lines[i]);
     if (heading !== null) {
-      stack.length = Math.min(stack.length, heading.level - 1);
-      stack.push(heading.text);
+      while (stack.length > 0 && stack[stack.length - 1].level >= heading.level) {
+        stack.pop();
+      }
+      stack.push({ level: heading.level, text: heading.text });
+      if (isSectionHeading(lines, i, difficultyLabels)) {
+        continue;
+      }
     }
     const hintRun = readHintRun(lines, i, difficultyLabels);
     if (hintRun !== null) {
@@ -379,7 +394,7 @@ ${hintRun.text}`;
         headerLine: lines[i],
         stem: header.lineStem,
         sourcePath: "",
-        sectionPath: [...stack],
+        sectionPath: stack.map((entry) => entry.text),
         questionBody: "",
         answerBody: "",
         hint: void 0,
@@ -434,6 +449,9 @@ function bodyHashAt(lines, headerIdx, difficultyLabels) {
     const hintRun = readHintRun(lines, i, difficultyLabels);
     if (hintRun !== null) {
       i = hintRun.end - 1;
+      continue;
+    }
+    if (parseHeading(lines[i]) !== null && isSectionHeading(lines, i, difficultyLabels)) {
       continue;
     }
     const h = parseHeader(lines[i], difficultyLabels);

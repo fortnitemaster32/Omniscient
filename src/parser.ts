@@ -160,6 +160,28 @@ export function parseHeader(
 }
 
 /**
+ * True when a heading introduces section content: the next line that is
+ * not blank and not another heading is a question header. Structural
+ * headings still belong to the section tree, but they are kept out of
+ * question and answer bodies instead of rendering as stray text at the
+ * end of the previous answer.
+ */
+function isSectionHeading(
+    lines: string[],
+    start: number,
+    difficultyLabels: string[],
+): boolean {
+    for (let i = start + 1; i < lines.length; i++) {
+        if (lines[i].trim().length === 0 || parseHeading(lines[i]) !== null) {
+            continue;
+        }
+        const header = parseHeader(lines[i], difficultyLabels);
+        return header !== null && header.kind === 'question';
+    }
+    return false;
+}
+
+/**
  * Parses an ATX heading line into its level and text. Headings are used
  * for the section filter, so indented code, fenced code and blockquoted
  * headings are excluded by the callers (this function only sees raw lines
@@ -329,8 +351,8 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
     let collectingQuestion = false;
     let body: string[] = [];
     let inFence = false;
-    /** Headings above the current position, outermost first. */
-    const stack: string[] = [];
+    /** Headings above the current position, with their levels. */
+    const stack: { level: number; text: string }[] = [];
 
     const finalizeBody = () => {
         if (current === null) {
@@ -361,10 +383,17 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
         }
         const heading = parseHeading(lines[i]);
         if (heading !== null) {
-            // Section tracking: a heading replaces everything at its own
-            // level and below, so later questions get the new path.
-            stack.length = Math.min(stack.length, heading.level - 1);
-            stack.push(heading.text);
+            // Section tracking: a heading at a level replaces the previous
+            // heading at that level and everything below it. Comparing
+            // levels (not stack length) keeps same-level headings as
+            // siblings even when a level was skipped, e.g. H1 then H3.
+            while (stack.length > 0 && stack[stack.length - 1].level >= heading.level) {
+                stack.pop();
+            }
+            stack.push({ level: heading.level, text: heading.text });
+            if (isSectionHeading(lines, i, difficultyLabels)) {
+                continue;
+            }
         }
         const hintRun = readHintRun(lines, i, difficultyLabels);
         if (hintRun !== null) {
@@ -400,7 +429,7 @@ export function parseQuestions(content: string, difficultyLabels: string[]): Par
                 headerLine: lines[i],
                 stem: header.lineStem,
                 sourcePath: '',
-                sectionPath: [...stack],
+                sectionPath: stack.map((entry) => entry.text),
                 questionBody: '',
                 answerBody: '',
                 hint: undefined,
@@ -472,6 +501,10 @@ function bodyHashAt(
             // Hints are excluded from the hash exactly like in parsing, so
             // adding or editing one never breaks later grade writes.
             i = hintRun.end - 1;
+            continue;
+        }
+        if (parseHeading(lines[i]) !== null && isSectionHeading(lines, i, difficultyLabels)) {
+            // Mirror parseQuestions: structural headings are not body text.
             continue;
         }
         const h = parseHeader(lines[i], difficultyLabels);
