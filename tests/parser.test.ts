@@ -1000,6 +1000,78 @@ test('hint inserts into a block without an answer and keeps the hash', () => {
     eq(graded.patched, true);
 });
 
+test('user character references that are not at line start are left alone', () => {
+    const content = '> Question\nbody\n> Answer\nans';
+    const { questions } = parseQuestions(content, LABELS);
+    const text = 'Use &#65; for A and &#0; stays too.';
+    const withHint = patchQuestionHint(content, questions[0], text, LABELS).content;
+    eq(withHint.includes('&#65;'), true);
+    eq(parseQuestions(withHint, LABELS).questions[0]?.hint, text);
+});
+
+test('a hint write does not delete a later hint when fences are involved', () => {
+    const content = [
+        '> Question',
+        'body',
+        '> Answer',
+        'ans',
+        '',
+        '> [!Hint]',
+        '> old',
+        '> ```',
+        '',
+        '> Question',
+        'second',
+        '> Answer',
+        'second ans',
+        '',
+        '> [!Hint]',
+        '> keep me',
+    ].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.hint, 'old\n```');
+    eq(questions[1]?.hint, 'keep me');
+    const result = patchQuestionHint(content, questions[0], 'new', LABELS);
+    const reparsed = parseQuestions(result.content, LABELS);
+    eq(reparsed.questions.length, 2);
+    eq(reparsed.questions[0]?.hint, 'new');
+    eq(reparsed.questions[1]?.hint, 'keep me');
+});
+
+test('an existing empty hint callout is filled in place', () => {
+    const content = ['> Question', 'body', '> [!Hint]', '> Answer', 'ans'].join('\n');
+    const { questions } = parseQuestions(content, LABELS);
+    eq(questions[0]?.hint, undefined);
+    const result = patchQuestionHint(content, questions[0], 'filled', LABELS);
+    const reparsed = parseQuestions(result.content, LABELS);
+    eq(reparsed.questions.length, 1);
+    eq(reparsed.questions[0]?.hint, 'filled');
+    eq((result.content.match(/> \[!Hint\]/g) ?? []).length, 1);
+});
+
+test('locate falls back to position when a question above is added mid-session', () => {
+    const original = '> Question\nbody\n> Answer\nans';
+    const { questions } = parseQuestions(original, LABELS);
+    const edited = [
+        '> Question',
+        'new question',
+        '> Answer',
+        'new ans',
+        '',
+        original,
+    ].join('\n');
+    const result = patchQuestionHeader(
+        edited,
+        questions[0],
+        '> Question | Mastered(1)',
+        LABELS,
+    );
+    eq(result.patched, true);
+    const lines = result.content.split('\n');
+    eq(lines[0], '> Question');
+    eq(lines[5], '> Question | Mastered(1)');
+});
+
 test('hints land before star and underscore separators too', () => {
     for (const separator of ['***', '___']) {
         const content = [

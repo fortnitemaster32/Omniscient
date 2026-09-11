@@ -254,18 +254,30 @@ export function readHintRun(
 }
 
 /**
- * Decodes the numeric character references the writer uses to keep hint
- * text that looks like a question or answer header from parsing as one.
- * Only values this module can write are decoded; anything else is kept.
+ * Decodes the leading numeric character reference that hintLinesFor
+ * writes at the start of a header-shaped hint line. Only those exact
+ * codes, and only at the start of a line, are decoded, so character
+ * references the user typed themselves are left untouched.
  */
+const NEUTRALIZED_CODES: Record<string, string> = {
+    '65': 'A',
+    '81': 'Q',
+    '91': '[',
+    '97': 'a',
+    '113': 'q',
+};
+
 function decodeCharRefs(text: string): string {
-    return text.replace(/&#(\d{1,7});/g, (whole, digits: string) => {
-        const code = Number.parseInt(digits, 10);
-        if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) {
-            return whole;
-        }
-        return String.fromCodePoint(code);
-    });
+    return text
+        .split('\n')
+        .map((line) =>
+            line.replace(
+                /^(\s*)&#(65|81|91|97|113);/,
+                (_whole, indent: string, code: string) =>
+                    `${indent}${NEUTRALIZED_CODES[code]}`,
+            ),
+        )
+        .join('\n');
 }
 
 /** Small deterministic hash of a string (djb2). */

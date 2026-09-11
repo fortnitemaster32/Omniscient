@@ -105,6 +105,8 @@ The answer is 2x + C.
 
 Hints stay hidden during a session until you press `H` or click **Show hint**, so they remind you of a past mistake without spoiling a fresh attempt. Each question has at most one hint; **Edit hint** (`N`) changes or removes it. Hints are excluded from the detection used to spot mid-session file edits, so grades and hints keep saving normally.
 
+A hint line that would otherwise read as a question or answer header (for example text starting with `Question:`) is stored with a numeric character reference such as `&#81;uestion:`. It renders identically in Obsidian and reads back as the text you typed.
+
 ## Usage
 
 New to Omniscient? Run the **Show usage guide** command for a tour of the question format and the commands (it also appears once the first time the plugin loads). Both the guide and the settings tab can create a sample quiz file for you.

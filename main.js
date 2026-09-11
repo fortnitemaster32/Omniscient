@@ -270,14 +270,20 @@ function readHintRun(lines, start, difficultyLabels) {
   }
   return { start, end, text: decodeCharRefs(assembleBody(body)) };
 }
+var NEUTRALIZED_CODES = {
+  "65": "A",
+  "81": "Q",
+  "91": "[",
+  "97": "a",
+  "113": "q"
+};
 function decodeCharRefs(text) {
-  return text.replace(/&#(\d{1,7});/g, (whole, digits) => {
-    const code = Number.parseInt(digits, 10);
-    if (!Number.isFinite(code) || code < 0 || code > 1114111) {
-      return whole;
-    }
-    return String.fromCodePoint(code);
-  });
+  return text.split("\n").map(
+    (line) => line.replace(
+      /^(\s*)&#(65|81|91|97|113);/,
+      (_whole, indent, code) => `${indent}${NEUTRALIZED_CODES[code]}`
+    )
+  ).join("\n");
 }
 function hashString(s) {
   let h = 5381;
