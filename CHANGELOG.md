@@ -4,7 +4,7 @@ All notable changes to Omniscient are documented here. The format is based on [K
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-09-11
+## [0.5.0] - 2026-09-11
 
 ### Added
 
