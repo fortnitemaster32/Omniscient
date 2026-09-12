@@ -2,30 +2,29 @@
 
 Quiz-and-recall study sessions for Obsidian, inspired by the **quiz-and-recall method** and **mega-problem sets** from *How to Be a Straight-A Student* by Cal Newport.
 
-Keep all of your practice questions for a subject in one markdown file (or a folder of them). Omniscient turns them into fast, keyboard-driven testing sessions: the question is shown, the answer stays hidden until you reveal it, and you grade yourself honestly. Every grade is written back to the file, so your notes *are* the progress tracker.
+Keep your practice questions in one markdown file (or a folder of them). Omniscient turns them into fast, keyboard-driven sessions: the question is shown, the answer stays hidden until you reveal it, and you grade yourself honestly. Every grade is written back to the file, so your notes *are* the progress tracker.
 
-## Requirements
+If Omniscient is useful to you, please [star it on GitHub](https://github.com/fortnitemaster32/Omniscient).
 
-- Obsidian **1.13.0 or later** (uses the declarative settings API)
+## Install
 
-See [CHANGELOG.md](CHANGELOG.md) for release history.
+- **Community browser:** search for Omniscient, or use the [plugin page](https://community.obsidian.md/plugins/omniscient), in Settings → Community plugins → Browse.
+- **Manual:** download `omniscient-<version>.zip` from the [latest release](https://github.com/fortnitemaster32/Omniscient/releases/latest), extract it, copy the `omniscient` folder into `<your vault>/.obsidian/plugins/`, then enable the plugin and reload Obsidian.
 
-## Installing
-
-Omniscient installs from the [community plugin browser](https://community.obsidian.md/plugins/omniscient). For a manual install, download `omniscient-<version>.zip` from the latest release, extract it, and copy the `omniscient` folder into `<your vault>/.obsidian/plugins/`. Then enable the plugin in Settings → Community plugins and reload Obsidian.
+Requires Obsidian **1.13.0 or later** (declarative settings). See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## How it works
 
-The quiz-and-recall method works like this: answer from memory (never passively re-read), mark what you missed, review only those, and repeat until you complete a pass with no mistakes. Omniscient encodes exactly that loop:
+Answer from memory (never passively re-read), mark what you missed, review only those, and repeat until a full pass has no mistakes:
 
 1. **Run a session** on any file with `> [!Question]` callout blocks.
-2. **Answer from memory**: the answer is hidden until you ask for it.
-3. **Reveal the answer**, then self-grade: `Struggling`, `Almost`, or `Mastered`.
-4. **Repeat with only the gaps**: the "Not mastered yet" filter gives you the next pass; keep going until you finish a session with nothing left to review.
+2. **Answer from memory**: the answer stays hidden until you ask for it.
+3. **Reveal the answer, then self-grade:** `Struggling`, `Almost`, or `Mastered`.
+4. **Repeat with only the gaps:** the **Not mastered yet** filter gives you the next pass until everything is exam-ready.
 
 ## Question format
 
-Any markdown file containing blockquote question/answer pairs. The callout style is recommended so Obsidian renders the blocks as nice foldable callouts. The literal word `Question` after the callout is the title shown in Obsidian; metadata follows after the pipes:
+Any markdown file with blockquote question/answer pairs:
 
 ```markdown
 ## Calculus
@@ -34,33 +33,27 @@ Any markdown file containing blockquote question/answer pairs. The callout style
 
 What is the maximum of this function?
 
-$$
-f(x) = x^{2} + 3 + \int_{0}^{x} x + 3 \, dx
-$$
-
 > [!Success] Answer
 
 The answer is...
 
----
+> [!Hint]
+> Optional note about what you missed last time.
 
 > [!Question] Question | Medium | Almost
 
-Explain what a derivative is and how to compute one.
+Explain what a derivative is.
 
 > [!Success] Answer
 
 The derivative describes the rate of change...
 ```
 
-- A question starts at `> [!Question]` (the title word and metadata are optional: `> [!Question]` alone works, and plain `> Question` is also recognized); everything until the next answer block is the question, everything after is the answer. Answer blocks use `> [!Success]` (renders as Obsidian's green callout; `[!answer]` is accepted as an alias).
-- LaTeX (`$$...$$`), code blocks, and nested callouts inside questions and answers are rendered normally.
-- Questions without an answer are fine. The reveal will say so.
-- One file can hold any number of questions; use headings to organize by topic.
-- For multi-file subjects, a folder of question files is treated as one big mega-problem set (see "Start quiz from folder").
-- A complete example quiz lives in `examples/calculus-quiz.md`.
+- A question starts at `> [!Question]`; everything until the next answer block is the question. `> [!Success]` (or `[!answer]`) starts the answer. Plain `> Question` and `> Answer` also work, and the title word and metadata are optional.
+- LaTeX, code blocks, and nested callouts render normally. Questions without an answer are fine.
+- Headings group questions into sections you can filter by, and a folder of files works as one mega-problem set. A complete example lives in [`examples/calculus-quiz.md`](examples/calculus-quiz.md).
 
-### Status metadata
+### Status and difficulty
 
 Status is stored **on the question line**, so progress is visible in the file itself:
 
@@ -69,109 +62,45 @@ Status is stored **on the question line**, so progress is visible in the file it
 | *(none)* | New, never graded |
 | `Struggling` | Missed it last pass |
 | `Almost` | Got it, but shaky |
-| `Mastered(2)` | Answered correctly; the number is **consecutive** mastered passes |
+| `Mastered(2)` | Answered correctly; the number counts **consecutive** mastered passes |
 
-Grading rules:
+`Mastered` increments the counter, and the counter resets if you grade anything else. A question is **exam-ready** when the counter reaches the **Mastered passes** setting (default 2). **Undo** restores the previous status in the session and in the file.
 
-- `Mastered` increments the counter (`Mastered(1)`, `Mastered(2)`, ...). The counter resets if you ever grade it anything else.
-- A question is **exam-ready** when its counter reaches the "Mastered passes" setting (default: 2).
-- `Almost` and `Struggling` are also tracked, so "review only the gaps" is always one click away.
-- **Undo** restores the previous status and counter, both in the session and in the file.
-
-### Difficulty metadata
-
-Difficulty is optional and configurable in settings (defaults: `Easy, Medium, Hard`):
-
-```markdown
-> [!Question] Question | Hard
-
-...
-```
-
-Metadata tokens are read from the **end of the line** and rewritten in canonical order (`Difficulty | Status`). Anything unrecognized in the middle of the line is preserved verbatim, so prose like `> Question: explain X` keeps working.
+Difficulty is optional and configurable (defaults to `Easy, Medium, Hard`): `> [!Question] Question | Hard`. Metadata is read from the end of the line and rewritten in canonical order (`Difficulty | Status`); unrecognized prose in the middle is preserved.
 
 ### Hints
 
-A hint is a note attached to one question, written from the session view with **Add hint** or `N`. It is stored in the file as a callout after the answer:
-
-```markdown
-> [!Success] Answer
-
-The answer is 2x + C.
-
-> [!Hint]
-> Forgot the +C last time.
-```
-
-Hints stay hidden during a session until you press `H` or click **Show hint**, so they remind you of a past mistake without spoiling a fresh attempt. Each question has at most one hint; **Edit hint** (`N`) changes or removes it. Hints are excluded from the detection used to spot mid-session file edits, so grades and hints keep saving normally.
-
-A hint line that would otherwise read as a question or answer header (for example text starting with `Question:`) is stored with a numeric character reference such as `&#81;uestion:`. It renders identically in Obsidian and reads back as the text you typed.
+A hint is a note attached to one question, added from the session with **Add hint** or `N` and stored as a `> [!Hint]` callout after the answer. Hints stay hidden until you press `H` or click **Show hint**, so they remind you of a past mistake without spoiling a fresh attempt. One hint per question; **Edit hint** (`N`) changes or removes it. Hints never interfere with grade writes.
 
 ## Usage
 
-New to Omniscient? Run the **Show usage guide** command for a tour of the question format and the commands (it also appears once the first time the plugin loads). Both the guide and the settings tab can create a sample quiz file for you. The sample has four headings, a mix of statuses, one question without an answer, and hints including a multi-paragraph one, so you can try the section filter and the hint keys right away.
-
-Commands (assign hotkeys in Settings → Hotkeys if you want them):
+Run **Show usage guide** for a tour of the format and commands (it also appears once on first load). The guide and the settings tab can create a sample quiz file with headings, statuses, and hints.
 
 | Command | What it does |
 | --- | --- |
 | **Start quiz** | Runs a session on the active file |
 | **Choose quiz file** | Picks any file in the vault that contains questions |
-| **Start quiz from folder** | Runs one session over every Markdown file in a folder (and its subfolders), the mega-problem set across chapters |
-| **Show quiz progress** | Opens a per-file summary: exam-ready, mastered, almost, struggling, new, and counts by difficulty |
-| **Show usage guide** | Reopens the in-app introduction to the question format and commands |
+| **Start quiz from folder** | One session over every question file in a folder tree, the mega-problem set across chapters |
+| **Show quiz progress** | Per-file summary: exam-ready, mastered, almost, struggling, new, and by difficulty |
+| **Show usage guide** | Reopens the in-app introduction |
 
-There is also a **ribbon icon** (a brain) in the left sidebar that starts a quiz with one click, or lets you pick a file when no file is active.
+The brain ribbon icon starts a quiz for the active note, or opens the file picker when no file is active.
 
-The setup dialog lets you:
+The setup dialog filters by status (defaults to **Not mastered yet**), difficulty, and section, from a searchable heading tree with per-section counts. It also toggles shuffling and shows a live question and exam-ready count.
 
-- Filter by status: all / new / struggling / almost there / not mastered yet / mastered (defaults to **not mastered yet**, so each session shows only what still needs work)
-- Filter by difficulty
-- Filter by section: pick any heading or group of headings from a searchable tree with per-section question counts; selecting a parent heading includes its subheadings
-- Toggle shuffling (on by default; never memorize order, only material)
-- See the question count, file count, and how many are exam-ready before you start; the count updates live as you change the filters
-
-### In-session keyboard shortcuts
+### In-session keys
 
 | Key | Action |
 | --- | --- |
 | `Space` / `Enter` | Reveal the answer |
-| `1` | Grade: struggling |
-| `2` | Grade: almost |
-| `3` | Grade: mastered |
-| `H` | Show or hide the hint (opens the hint dialog when there is none) |
+| `1` / `2` / `3` | Grade: struggling / almost / mastered |
+| `H` | Show or hide the hint |
 | `N` | Add or edit the hint |
-| `S` | Skip; requeues the question at the end, ungraded |
-| `U` | Undo the last grade (also restores the status in the file) |
+| `S` | Skip; requeues the question ungraded |
+| `U` | Undo the last grade |
 | `Esc` | End the session |
 
-Each question shows its number in the file (`Question 7 of 42`), so even a filtered session tells you where the question lives in the note. Numbering is display only and never written to the file.
-
-Every grade is saved to the file immediately. If you edit the file during a session, the plugin detects it and skips writing to questions that changed. Nothing gets corrupted.
-
-### Finishing early is normal
-
-Ending a session before all questions are answered is a first-class flow, not an error: hit `Esc` or the **End session** button whenever you run out of time. The summary shows how many questions remain unanswered, and those questions keep their current status. Nothing is penalized. The session history counts only what you actually answered.
-
-### Session history
-
-Every finished session is recorded (date, file, counts), including partial ones. The settings tab shows a summary and your totals, so you can watch the mastered percentage climb over time.
-
-## Troubleshooting
-
-**The quiz view closes immediately or nothing happens when starting a session.**
-
-1. Reload Obsidian (**Ctrl+R**) after installing or updating the plugin.
-2. Make sure the active file is a Markdown file with at least one `> [!Question]` block.
-3. Check the developer console for a red error starting with `Omniscient:`; any failure is reported there and as a notice.
-
-**A grade did not change the file.**
-
-The plugin writes statuses only to questions it can still find unchanged. If you edited a question's text or header during a session, that question is skipped (and counted in the summary) so your edits are never corrupted. Grade it again in the next session. The same rule applies to hints: if the question changed, the hint dialog stays open so your text is not lost.
-
-**Questions are missing from a session.**
-
-Check the status, difficulty, and section filters in the setup dialog, and that the file uses the format above. Lines indented 4+ spaces are treated as code, and question-like lines inside fenced code blocks are body text.
+Each question shows its number in the file (`Question 7 of 42`); numbering is display only. Grades are saved immediately, and questions edited mid-session are skipped and counted instead of corrupted. Ending early is normal: the summary shows what remains, and those questions keep their status. Session history (date, file, counts) is kept in the settings tab.
 
 ## Settings
 
@@ -180,6 +109,12 @@ Check the status, difficulty, and section filters in the setup dialog, and that 
 | Difficulty labels | `Easy, Medium, Hard` | Comma-separated; recognized on question lines |
 | Mastered passes | `2` | Consecutive mastered answers to be exam-ready |
 | Shuffle questions | on | Randomize order at session start |
+
+## Troubleshooting
+
+- **Nothing happens when starting a session:** reload Obsidian, make sure the active file is a markdown file with a `> [!Question]` block, and check the developer console for errors starting with `Omniscient:`.
+- **A grade did not change the file:** the question was edited mid-session, so the write was skipped and counted in the summary. Grade it again next session.
+- **Questions are missing:** check the status, difficulty, and section filters. Lines indented 4+ spaces, and question-like lines inside code fences, are not quiz content.
 
 ## Suggesting features
 
